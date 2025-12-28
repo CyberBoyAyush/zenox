@@ -105,6 +105,58 @@ This plugin automatically injects delegation guidelines into OpenCode's Build an
 | "Should I use Redux or Zustand?" | @oracle |
 | "Make this dashboard look better" | @ui-planner |
 
+## Configuration (Optional)
+
+You can customize agent models or disable agents by creating a config file.
+
+### Config File Locations
+
+| Location | Priority | Use Case |
+|----------|----------|----------|
+| `~/.config/opencode/ayush-opencode.json` | Base | User-level defaults |
+| `.opencode/ayush-opencode.json` | Override | Project-specific settings |
+
+Project config overrides user config when both exist.
+
+### Config Options
+
+```json
+{
+  "agents": {
+    "explorer": { "model": "anthropic/claude-haiku-4-5" },
+    "librarian": { "model": "anthropic/claude-sonnet-4-5" },
+    "oracle": { "model": "openai/gpt-5.2-high" },
+    "ui-planner": { "model": "google/gemini-3-pro-high" }
+  },
+  "disabled_agents": []
+}
+```
+
+### Override Models
+
+To use different models for specific agents:
+
+```json
+{
+  "agents": {
+    "explorer": { "model": "anthropic/claude-sonnet-4" },
+    "oracle": { "model": "openai/gpt-4o" }
+  }
+}
+```
+
+### Disable Agents
+
+To disable specific agents:
+
+```json
+{
+  "disabled_agents": ["oracle", "ui-planner"]
+}
+```
+
+Available agent names: `explorer`, `librarian`, `oracle`, `ui-planner`
+
 ## MCP Tools Required
 
 This plugin assumes you have the following MCP servers configured:

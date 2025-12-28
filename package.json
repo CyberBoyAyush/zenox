@@ -1,6 +1,6 @@
 {
   "name": "ayush-opencode",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Custom OpenCode agents (explorer, librarian, oracle, ui-planner) with orchestration injection for Build/Plan agents",
   "author": "Ayush",
   "license": "MIT",
@@ -42,7 +42,8 @@
   },
   "dependencies": {
     "@opencode-ai/plugin": "^1.0.162",
-    "@opencode-ai/sdk": "^1.0.162"
+    "@opencode-ai/sdk": "^1.0.162",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "bun-types": "latest",
