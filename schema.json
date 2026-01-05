@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AyushOpenCodeConfig",
+  "description": "Configuration schema for ayush-opencode plugin",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for editor autocompletion"
+    },
+    "agents": {
+      "type": "object",
+      "description": "Override models for specific agents",
+      "properties": {
+        "explorer": {
+          "$ref": "#/$defs/agentOverride",
+          "description": "Fast codebase search specialist (default: anthropic/claude-haiku-4-5)"
+        },
+        "librarian": {
+          "$ref": "#/$defs/agentOverride",
+          "description": "Open-source research agent (default: anthropic/claude-sonnet-4-5)"
+        },
+        "oracle": {
+          "$ref": "#/$defs/agentOverride",
+          "description": "Strategic technical advisor (default: openai/gpt-5.2-high)"
+        },
+        "ui-planner": {
+          "$ref": "#/$defs/agentOverride",
+          "description": "Designer-turned-developer for UI/UX (default: google/gemini-3-pro-high)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "disabled_agents": {
+      "type": "array",
+      "description": "List of agents to disable",
+      "items": {
+        "type": "string",
+        "enum": ["explorer", "librarian", "oracle", "ui-planner"]
+      },
+      "uniqueItems": true
+    },
+    "disabled_mcps": {
+      "type": "array",
+      "description": "List of MCP servers to not auto-inject",
+      "items": {
+        "type": "string",
+        "enum": ["exa", "grep_app", "sequential-thinking"]
+      },
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "agentOverride": {
+      "type": "object",
+      "description": "Agent override configuration",
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "Model identifier (e.g., 'anthropic/claude-sonnet-4', 'openai/gpt-4o')"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
