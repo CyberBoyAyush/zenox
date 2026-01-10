@@ -46,9 +46,9 @@ export function createAutoUpdateHook(
         // Show update available toast
         await ctx.client.tui.showToast({
           body: {
-            title: `${PACKAGE_NAME} v${updateInfo.latestVersion}`,
-            message: `Update available. Restart OpenCode to apply.`,
-            variant: "info",
+            title: `🆕 ${PACKAGE_NAME} v${updateInfo.latestVersion}`,
+            message: `Fresh update dropped! Restart to level up.`,
+            variant: "success",
             duration: TOAST_DURATION,
           },
         }).catch(() => {})
@@ -62,9 +62,9 @@ export function createAutoUpdateHook(
 async function showVersionToast(ctx: PluginInput, version: string) {
   await ctx.client.tui.showToast({
     body: {
-      title: `${PACKAGE_NAME} v${version}`,
-      message: "Plugin loaded",
-      variant: "info",
+      title: `⚡ ${PACKAGE_NAME} v${version}`,
+      message: "Agents assembled. Let's build!",
+      variant: "success",
       duration: TOAST_DURATION,
     },
   }).catch(() => {})
