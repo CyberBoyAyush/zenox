@@ -1,18 +1,58 @@
 import { existsSync } from "node:fs"
 import { readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
+import { homedir } from "node:os"
 import stripJsonComments from "strip-json-comments"
 import type { OpencodeConfig, ConfigFormat } from "./types"
 import { PACKAGE_NAME } from "./constants"
 
 const CONFIG_FILENAMES = ["opencode.json", "opencode.jsonc"]
 
+/**
+ * Get the global OpenCode config directory
+ * Follows XDG spec on Linux, uses ~/.config on macOS, handles Windows APPDATA
+ */
+function getGlobalConfigDir(): string {
+  if (process.platform === "win32") {
+    // Check cross-platform path first (~/.config)
+    const crossPlatformDir = join(homedir(), ".config", "opencode")
+    const crossPlatformConfig = join(crossPlatformDir, "opencode.json")
+    const crossPlatformConfigJsonc = join(crossPlatformDir, "opencode.jsonc")
+
+    if (existsSync(crossPlatformConfig) || existsSync(crossPlatformConfigJsonc)) {
+      return crossPlatformDir
+    }
+
+    // Fall back to %APPDATA%
+    const appData = process.env.APPDATA || join(homedir(), "AppData", "Roaming")
+    return join(appData, "opencode")
+  }
+
+  // macOS/Linux: use XDG_CONFIG_HOME or ~/.config
+  const xdgConfig = process.env.XDG_CONFIG_HOME || join(homedir(), ".config")
+  return join(xdgConfig, "opencode")
+}
+
+/**
+ * Find OpenCode config file in order of priority:
+ * 1. .opencode/opencode.json[c] (project-local subdirectory)
+ * 2. opencode.json[c] (project root)
+ * 3. ~/.config/opencode/opencode.json[c] (global)
+ */
 export function findConfigFile(directory: string): { path: string; format: ConfigFormat } | null {
-  for (const filename of CONFIG_FILENAMES) {
-    const configPath = join(directory, filename)
-    if (existsSync(configPath)) {
-      const format: ConfigFormat = filename.endsWith(".jsonc") ? "jsonc" : "json"
-      return { path: configPath, format }
+  const searchPaths = [
+    join(directory, ".opencode"),  // Project-local subdirectory
+    directory,                      // Project root
+    getGlobalConfigDir(),          // Global config
+  ]
+
+  for (const searchDir of searchPaths) {
+    for (const filename of CONFIG_FILENAMES) {
+      const configPath = join(searchDir, filename)
+      if (existsSync(configPath)) {
+        const format: ConfigFormat = filename.endsWith(".jsonc") ? "jsonc" : "json"
+        return { path: configPath, format }
+      }
     }
   }
   return null
@@ -95,7 +135,17 @@ export async function installPlugin(configPath: string): Promise<void> {
 }
 
 export function getDefaultConfigPath(directory: string): string {
+  // If .opencode directory exists, create config there (project-local)
+  const dotOpencodeDir = join(directory, ".opencode")
+  if (existsSync(dotOpencodeDir)) {
+    return join(dotOpencodeDir, "opencode.json")
+  }
+  // Otherwise create in project root
   return join(directory, "opencode.json")
+}
+
+export function getGlobalConfigPath(): string {
+  return join(getGlobalConfigDir(), "opencode.json")
 }
 
 export async function createDefaultConfig(configPath: string): Promise<void> {
