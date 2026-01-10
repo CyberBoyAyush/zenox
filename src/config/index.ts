@@ -1,9 +1,9 @@
 export {
-  AyushOpenCodeConfigSchema,
+  ZenoxConfigSchema,
   AgentNameSchema,
   AgentOverrideConfigSchema,
   AgentOverridesSchema,
-  type AyushOpenCodeConfig,
+  type ZenoxConfig,
   type AgentName,
   type AgentOverrideConfig,
   type AgentOverrides,

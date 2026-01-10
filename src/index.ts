@@ -1,15 +1,16 @@
 /**
- * ayush-opencode - Custom OpenCode Plugin
+ * zenox - OpenCode Plugin for Intelligent Agent Orchestration
  *
  * This plugin provides:
- * 1. Custom subagents: explorer, librarian, oracle, ui-planner
- * 2. Orchestration injection into Build/Plan agents for better delegation
+ * 1. Specialized subagents: explorer, librarian, oracle, ui-planner
+ * 2. Orchestration injection into Build/Plan agents for smart delegation
  * 3. Auto-loaded MCP servers: exa, grep_app, sequential-thinking
- * 4. Optional configuration via ayush-opencode.json for model/MCP overrides
+ * 4. Background task system for parallel agent execution
+ * 5. Optional configuration via zenox.json for model/MCP overrides
  */
 
 import type { Plugin } from "@opencode-ai/plugin"
-import type { AgentConfig } from "@opencode-ai/sdk"
+import type { AgentConfig, Event } from "@opencode-ai/sdk"
 import {
   explorerAgent,
   librarianAgent,
@@ -19,12 +20,17 @@ import {
 import { ORCHESTRATION_PROMPT } from "./orchestration/prompt"
 import { loadPluginConfig, type AgentName } from "./config"
 import { createBuiltinMcps } from "./mcp"
+import { BackgroundManager, createBackgroundTools } from "./background"
 
-const AyushOpenCodePlugin: Plugin = async (ctx) => {
+const ZenoxPlugin: Plugin = async (ctx) => {
   // Load user/project configuration
   const pluginConfig = loadPluginConfig(ctx.directory)
   const disabledAgents = new Set(pluginConfig.disabled_agents ?? [])
   const disabledMcps = pluginConfig.disabled_mcps ?? []
+
+  // Initialize background task manager
+  const backgroundManager = new BackgroundManager()
+  const backgroundTools = createBackgroundTools(backgroundManager, ctx.client)
 
   // Helper to apply model override from config
   const applyModelOverride = (
@@ -39,6 +45,49 @@ const AyushOpenCodePlugin: Plugin = async (ctx) => {
   }
 
   return {
+    // Register background task tools
+    tool: backgroundTools,
+
+    // Handle session events for background task completion detection
+    event: async (input: { event: Event }) => {
+      const { event } = input
+
+      // Track main session on creation
+      if (event.type === "session.created") {
+        const props = event.properties as { info?: { id?: string; parentID?: string } }
+        const sessionInfo = props?.info
+        // Only set main session if it's not a child session (no parent)
+        if (sessionInfo?.id && !sessionInfo?.parentID) {
+          backgroundManager.setMainSession(sessionInfo.id)
+        }
+      }
+
+      // Detect background task completion via session.idle
+      if (event.type === "session.idle") {
+        const props = event.properties as { sessionID?: string }
+        const sessionID = props?.sessionID
+        if (!sessionID) return
+
+        const notification = backgroundManager.handleSessionIdle(sessionID)
+
+        // If a background task completed, notify the main session
+        if (notification) {
+          const mainSessionID = backgroundManager.getMainSession()
+          if (mainSessionID) {
+            await ctx.client.session.prompt({
+              path: { id: mainSessionID },
+              body: {
+                // noReply: true = silent (don't trigger response)
+                // noReply: false = loud (trigger response)
+                noReply: !notification.allComplete,
+                parts: [{ type: "text", text: notification.message }],
+              },
+            })
+          }
+        }
+      }
+    },
+
     config: async (config) => {
       // Initialize agent config if not present
       config.agent = config.agent ?? {}
@@ -84,7 +133,7 @@ const AyushOpenCodePlugin: Plugin = async (ctx) => {
 }
 
 // Default export for OpenCode plugin system
-export default AyushOpenCodePlugin
+export default ZenoxPlugin
 
 // NOTE: Do NOT export functions from main index.ts!
 // OpenCode treats ALL exports as plugin instances and calls them.
@@ -96,8 +145,10 @@ export type {
 } from "./agents"
 
 export type {
-  AyushOpenCodeConfig,
+  ZenoxConfig,
   AgentName,
 } from "./config"
 
 export type { McpName } from "./mcp"
+
+export type { BackgroundTask, TaskStatus } from "./background"

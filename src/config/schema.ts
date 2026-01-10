@@ -36,13 +36,13 @@ export const AgentOverridesSchema = z.object({
 export type AgentOverrides = z.infer<typeof AgentOverridesSchema>
 
 /**
- * Main configuration schema for ayush-opencode
+ * Main configuration schema for zenox
  */
-export const AyushOpenCodeConfigSchema = z.object({
+export const ZenoxConfigSchema = z.object({
   $schema: z.string().optional(),
   agents: AgentOverridesSchema.optional(),
   disabled_agents: z.array(AgentNameSchema).optional(),
   disabled_mcps: z.array(McpNameSchema).optional(),
 })
 
-export type AyushOpenCodeConfig = z.infer<typeof AyushOpenCodeConfigSchema>
+export type ZenoxConfig = z.infer<typeof ZenoxConfigSchema>

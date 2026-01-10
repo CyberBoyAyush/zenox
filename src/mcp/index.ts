@@ -7,7 +7,7 @@ export { McpNameSchema, type McpName } from "./types"
 export type { McpServerConfig, LocalMcpServerConfig, RemoteMcpServerConfig } from "./types"
 
 /**
- * All built-in MCP servers provided by ayush-opencode
+ * All built-in MCP servers provided by zenox
  */
 const allBuiltinMcps = {
   exa,

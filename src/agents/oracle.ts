@@ -72,7 +72,7 @@ code analysis, debugging strategy, and engineering guidance. Use for
 design reviews, complex debugging, technical trade-offs, refactoring 
 roadmaps, and strategic technical decisions.`,
   mode: "subagent",
-  model: "openai/gpt-5.2-high",
+  model: "openai/gpt-5.2",
   temperature: 0.1,
   tools: {
     write: false,

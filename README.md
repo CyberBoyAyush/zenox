@@ -1,68 +1,31 @@
-# ayush-opencode
+# zenox
 
-Custom OpenCode plugin with specialized subagents and orchestration injection.
+OpenCode plugin for intelligent agent orchestration with specialized subagents and parallel background tasks.
 
 ## Features
 
-- **4 Custom Subagents**: Explorer, Librarian, Oracle, UI-Planner
-- **Auto-Loaded MCP Servers**: exa, grep_app, sequential-thinking (no manual config needed!)
-- **Orchestration Injection**: Automatically teaches Build/Plan agents how to delegate tasks
+- **4 Specialized Subagents**: Explorer, Librarian, Oracle, UI-Planner
+- **Background Tasks**: Parallel agent execution for comprehensive research
+- **Auto-Loaded MCP Servers**: exa, grep_app, sequential-thinking
+- **Smart Orchestration**: Automatically teaches Build/Plan agents how to delegate
 - **Portable**: Install on any machine via opencode.json
 
 ## Installation
 
-Just add to your `opencode.json` — OpenCode will auto-install the plugin:
+Add to your `opencode.json`:
 
 ```json
 {
-  "plugin": ["ayush-opencode@0.2.2"]
+  "plugin": ["zenox@0.1.0"]
 }
 ```
 
-That's it! Restart OpenCode and the plugin is ready to use.
-
-## Plugin Versioning & Updates
-
-> **Important**: OpenCode does NOT auto-update plugins. You must pin versions for reliable updates.
-
-### Recommended: Pin the Version
-
-```json
-{
-  "plugin": ["ayush-opencode@0.2.2"]
-}
-```
-
-**Why pin versions?** OpenCode uses Bun's lockfile which pins resolved versions. If you use `"ayush-opencode"` without a version, it resolves to "latest" once and **never updates** even when new versions are published.
-
-### Upgrading to a New Version
-
-Simply change the version in your config and restart OpenCode:
-
-```jsonc
-// Change from:
-"plugin": ["ayush-opencode@0.2.2"]
-
-// To:
-"plugin": ["ayush-opencode@0.3.0"]
-```
-
-OpenCode will detect the version mismatch and install the new version automatically.
-
-### If You're Stuck on an Old Version
-
-If you previously used an unpinned version, clear the cache:
-
-```bash
-rm -rf ~/.cache/opencode/node_modules ~/.cache/opencode/bun.lock
-```
-
-Then restart OpenCode with a pinned version in your config.
+Restart OpenCode and the plugin is ready to use.
 
 ## Agents
 
 ### @explorer
-Fast codebase search specialist. Use for:
+Fast codebase search specialist.
 - "Where is X implemented?"
 - "Find all files containing Y"
 - Pattern matching and locating implementations
@@ -70,7 +33,7 @@ Fast codebase search specialist. Use for:
 **Model**: `anthropic/claude-haiku-4-5`
 
 ### @librarian
-Open-source research agent. Use for:
+Open-source research agent.
 - "How does library X work?"
 - "Show me implementation examples"
 - Finding official documentation
@@ -78,7 +41,7 @@ Open-source research agent. Use for:
 **Model**: `anthropic/claude-sonnet-4-5`
 
 ### @oracle
-Strategic technical advisor. Use for:
+Strategic technical advisor.
 - Architecture decisions
 - Code review and debugging strategy
 - Technical trade-offs analysis
@@ -86,131 +49,73 @@ Strategic technical advisor. Use for:
 **Model**: `openai/gpt-5.2-high`
 
 ### @ui-planner
-Designer-turned-developer. Use for:
+Designer-turned-developer.
 - Beautiful UI/UX implementation
 - Frontend aesthetics and animations
 - Visual design without mockups
 
 **Model**: `google/gemini-3-pro-high`
 
-## Orchestration
+## Background Tasks
 
-This plugin automatically injects delegation guidelines into OpenCode's Build and Plan agents. After installation, these agents will know when and how to delegate tasks to the specialized subagents.
+For parallel research, use background tasks instead of sequential agents:
 
-### Example Delegations
+```
+// Launch parallel research (all run simultaneously)
+background_task(agent="explorer", description="Find auth code", prompt="...")
+background_task(agent="explorer", description="Find db layer", prompt="...")
+background_task(agent="librarian", description="Best practices", prompt="...")
 
-| User Request | Delegated To |
-|--------------|--------------|
-| "How does React Query handle caching?" | @librarian |
-| "Where is the auth middleware?" | @explorer |
-| "Should I use Redux or Zustand?" | @oracle |
-| "Make this dashboard look better" | @ui-planner |
+// Continue working while they run...
+// [NOTIFICATION: All background tasks complete!]
+
+// Retrieve results
+background_output(task_id="bg_abc123")
+```
+
+### When to Use
+
+| Scenario | Use Background Tasks |
+|----------|---------------------|
+| Comprehensive exploration | YES - fire 3-4 agents in parallel |
+| Codebase + external docs | YES - explore + librarian in parallel |
+| Result A needed before B | NO - use sequential Task |
 
 ## Configuration (Optional)
 
-You can customize agent models or disable agents by creating a config file.
-
-### Config File Locations
-
-| Location | Priority | Use Case |
-|----------|----------|----------|
-| `~/.config/opencode/ayush-opencode.json` | Base | User-level defaults |
-| `.opencode/ayush-opencode.json` | Override | Project-specific settings |
-
-Project config overrides user config when both exist.
-
-### Config Options
-
-```json
-{
-  "agents": {
-    "explorer": { "model": "anthropic/claude-haiku-4-5" },
-    "librarian": { "model": "anthropic/claude-sonnet-4-5" },
-    "oracle": { "model": "openai/gpt-5.2-high" },
-    "ui-planner": { "model": "google/gemini-3-pro-high" }
-  },
-  "disabled_agents": [],
-  "disabled_mcps": []
-}
-```
-
-### Override Models
-
-To use different models for specific agents:
+Create `~/.config/opencode/zenox.json` or `.opencode/zenox.json`:
 
 ```json
 {
   "agents": {
     "explorer": { "model": "anthropic/claude-sonnet-4" },
     "oracle": { "model": "openai/gpt-4o" }
-  }
+  },
+  "disabled_agents": [],
+  "disabled_mcps": []
 }
 ```
-
-### Disable Agents
-
-To disable specific agents:
-
-```json
-{
-  "disabled_agents": ["oracle", "ui-planner"]
-}
-```
-
-Available agent names: `explorer`, `librarian`, `oracle`, `ui-planner`
 
 ## Auto-Loaded MCP Servers
 
-This plugin **automatically loads** the following MCP servers — no manual configuration needed!
-
-| MCP Server | Type | Description |
-|------------|------|-------------|
-| `exa` | HTTP Streamable | Web search, code context, URL crawling (no API key required) |
-| `grep_app` | Remote | GitHub code search across millions of repos |
-| `sequential-thinking` | Local | Structured reasoning for complex problems |
-
-### How It Works
-
-When you install this plugin, these MCP servers are automatically injected into OpenCode's config:
-
-- **Your other MCPs are preserved** — If you have `supabase`, `memcontext`, or any custom MCPs, they continue to work
-- **Conflicts use our config** — If you have `exa` configured differently, our version takes priority
-- **Disable if needed** — Use `disabled_mcps` config to opt-out (see below)
-
-### Disable Specific MCPs
-
-If you want to keep your own MCP config for a server we provide:
-
-```json
-{
-  "disabled_mcps": ["exa"]
-}
-```
-
-Available MCP names: `exa`, `grep_app`, `sequential-thinking`
-
-This will skip injecting our `exa` config, allowing your custom one to remain.
+| MCP Server | Description |
+|------------|-------------|
+| `exa` | Web search, code context, URL crawling |
+| `grep_app` | GitHub code search across millions of repos |
+| `sequential-thinking` | Structured reasoning for complex problems |
 
 ## Development
 
 ```bash
-# Install dependencies
 bun install
-
-# Build
 bun run build
-
-# Type check
 bun run typecheck
 ```
 
-## Credits & Acknowledgments
+## Credits
 
-This plugin was built with inspiration and learnings from:
-
-- **[OpenCode](https://opencode.ai)** — The CLI tool this plugin extends. Check out their [documentation](https://opencode.ai/docs) and [plugin development guide](https://opencode.ai/docs/plugins).
-
-- **[oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode)** by [YeonGyu Kim](https://github.com/code-yeongyu) — A fantastic OpenCode plugin that pioneered many orchestration patterns used here. The agent delegation strategies, parallel execution patterns, and prompt structuring were heavily influenced by their work.
+- **[OpenCode](https://opencode.ai)** — The CLI tool this plugin extends
+- **[oh-my-opencode](https://github.com/code-yeongyu/oh-my-opencode)** by YeonGyu Kim — Inspiration for orchestration patterns
 
 ## License
 

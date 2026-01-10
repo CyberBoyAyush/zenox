@@ -1,7 +1,7 @@
 {
-  "name": "ayush-opencode",
-  "version": "0.2.2",
-  "description": "Custom OpenCode agents (explorer, librarian, oracle, ui-planner) with orchestration injection for Build/Plan agents",
+  "name": "zenox",
+  "version": "0.1.0",
+  "description": "OpenCode plugin with specialized agents (explorer, librarian, oracle, ui-planner), background tasks for parallel execution, and smart orchestration",
   "author": "Ayush",
   "license": "MIT",
   "type": "module",
@@ -23,6 +23,7 @@
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
+    "zenox",
     "opencode",
     "plugin",
     "agents",
@@ -30,19 +31,22 @@
     "librarian",
     "oracle",
     "ui-planner",
+    "background-tasks",
+    "parallel",
+    "orchestration",
     "ai",
     "llm"
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/CYBERBOYAYUSH/ayush-opencode.git"
+    "url": "git+https://github.com/CYBERBOYAYUSH/zenox.git"
   },
   "publishConfig": {
     "access": "public"
   },
   "dependencies": {
-    "@opencode-ai/plugin": "^1.0.162",
-    "@opencode-ai/sdk": "^1.0.162",
+    "@opencode-ai/plugin": "^1.1.12",
+    "@opencode-ai/sdk": "^1.1.12",
     "zod": "^3.24.1"
   },
   "devDependencies": {

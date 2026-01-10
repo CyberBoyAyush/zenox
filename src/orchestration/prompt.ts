@@ -109,4 +109,60 @@ Message 2: Task(...) → wait for result
 - Questions answerable from code already in context
 - Trivial changes requiring no specialist knowledge
 - Tasks you can complete faster than explaining to an agent
+
+---
+
+## Background Tasks (Parallel Research)
+
+For **independent research tasks** that benefit from parallelism, use background tasks instead of sequential Task calls.
+
+### When to Use Background Tasks
+
+| Scenario | Use Background Tasks |
+|----------|---------------------|
+| User wants "comprehensive" / "thorough" / "deep" exploration | YES - fire 3-4 agents in parallel |
+| Need BOTH codebase search AND external docs | YES - explore + librarian in parallel |
+| Exploring multiple modules/features simultaneously | YES - separate explore for each |
+| Result of Task A needed before Task B | NO - use sequential Task |
+| Single focused lookup | NO - just use Task directly |
+
+### How Background Tasks Work
+
+1. **Fire**: Launch multiple agents with \`background_task\` - they run in parallel
+2. **Continue**: Keep working while background agents search
+3. **Notify**: You'll be notified when ALL background tasks complete
+4. **Retrieve**: Use \`background_output\` to get each result
+
+### Usage
+
+\`\`\`
+// Launch parallel research (all run simultaneously)
+background_task(agent="explorer", description="Find auth code", prompt="Search for authentication...")
+background_task(agent="explorer", description="Find db layer", prompt="Search for database/ORM...")
+background_task(agent="librarian", description="Best practices", prompt="Find framework best practices...")
+
+// Continue working on other things while they run...
+
+// [NOTIFICATION: All background tasks complete!]
+
+// Retrieve results
+background_output(task_id="bg_abc123")
+background_output(task_id="bg_def456")
+background_output(task_id="bg_ghi789")
+\`\`\`
+
+### Background Tasks vs Task Tool
+
+| Aspect | Task Tool | Background Tasks |
+|--------|-----------|------------------|
+| Execution | Sequential (waits for result) | Parallel (fire-and-forget) |
+| Best for | Dependent tasks, immediate needs | Independent research, breadth |
+| Result | Inline, immediate | Retrieved later via background_output |
+
+### Key Insight
+
+- **Task** = Use when you need the result immediately before proceeding
+- **Background** = Use when researching multiple angles independently
+
+**Both tools coexist - choose based on whether tasks are dependent or independent.**
 `
