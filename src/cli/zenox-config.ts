@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs"
-import { readFile, writeFile, mkdir } from "node:fs/promises"
+import { readFile, writeFile, mkdir, unlink } from "node:fs/promises"
 import { join, dirname } from "node:path"
 import { homedir } from "node:os"
 import type { AgentName, McpName } from "./constants"
@@ -46,13 +46,28 @@ export async function updateAgentModels(
   models: Partial<Record<AgentName, string>>
 ): Promise<void> {
   const existing = (await readZenoxConfig()) ?? {}
+  const configPath = getZenoxConfigPath()
 
-  const agents: ZenoxConfigAgents = { ...existing.agents }
-
+  // Build new agents config (replaces existing, doesn't merge)
+  const agents: ZenoxConfigAgents = {}
   for (const [agent, model] of Object.entries(models)) {
     if (model) {
       agents[agent] = { model }
     }
+  }
+
+  // If no custom agents and no other config, delete the file
+  if (Object.keys(agents).length === 0) {
+    const { agents: _, ...rest } = existing
+    if (Object.keys(rest).length === 0) {
+      if (existsSync(configPath)) {
+        await unlink(configPath)
+      }
+      return
+    }
+    // Keep other config but remove agents
+    await writeZenoxConfig(rest)
+    return
   }
 
   await writeZenoxConfig({
@@ -81,12 +96,16 @@ export function getDisabledMcps(config: ZenoxConfig | null): McpName[] {
 
 export async function updateDisabledMcps(disabledMcps: McpName[]): Promise<void> {
   const existing = (await readZenoxConfig()) ?? {}
+  const configPath = getZenoxConfigPath()
 
   if (disabledMcps.length === 0) {
-    // Remove the field if empty
+    // Remove the disabled_mcps field
     const { disabled_mcps: _, ...rest } = existing
     if (Object.keys(rest).length === 0) {
-      // Don't write empty config
+      // Delete the file if it would be empty
+      if (existsSync(configPath)) {
+        await unlink(configPath)
+      }
       return
     }
     await writeZenoxConfig(rest)
