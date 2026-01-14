@@ -102,6 +102,8 @@ const ZenoxPlugin: Plugin = async (ctx) => {
                 // noReply: true = silent (don't trigger response)
                 // noReply: false = loud (trigger response)
                 noReply: !notification.allComplete,
+                // Preserve the agent mode that was active when task was launched
+                agent: notification.parentAgent,
                 parts: [{ type: "text", text: notification.message }],
               },
             })

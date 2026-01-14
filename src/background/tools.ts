@@ -44,6 +44,7 @@ Use for independent research tasks that benefit from parallelism.`,
           description: args.description,
           prompt: args.prompt,
           parentSessionID: context.sessionID,
+          parentAgent: context.agent, // Track which agent (plan/build) launched this task
         })
 
         const activeTasks = manager.listActiveTasks()

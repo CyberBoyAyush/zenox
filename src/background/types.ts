@@ -15,6 +15,7 @@ export interface BackgroundTask {
   startedAt: Date
   completedAt?: Date
   error?: string
+  parentAgent?: string // Agent that was active when task was launched (plan/build)
 }
 
 export interface LaunchInput {
@@ -22,6 +23,7 @@ export interface LaunchInput {
   prompt: string
   description: string
   parentSessionID: string
+  parentAgent?: string // Agent that was active when task was launched (plan/build)
 }
 
 export interface CompletionNotification {
@@ -29,4 +31,5 @@ export interface CompletionNotification {
   message: string
   completedTasks: BackgroundTask[]
   runningCount: number
+  parentAgent?: string // Agent to return notification to (preserves mode)
 }

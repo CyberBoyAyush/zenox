@@ -70,6 +70,7 @@ export class BackgroundManager {
       prompt: input.prompt,
       status: "running",
       startedAt: new Date(),
+      parentAgent: input.parentAgent,
     }
 
     this.tasks.set(task.id, task)
@@ -261,11 +262,15 @@ ${runningTasks.length} task(s) still running. Continue working.
 </system-reminder>`
     }
 
+    // Get parentAgent from the first completed task (all tasks share same parent)
+    const parentAgent = completedTasks[0]?.parentAgent
+
     return {
       allComplete,
       message,
       completedTasks,
       runningCount: runningTasks.length,
+      parentAgent,
     }
   }
 
