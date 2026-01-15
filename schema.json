@@ -58,6 +58,11 @@
         "model": {
           "type": "string",
           "description": "Model identifier (e.g., 'anthropic/claude-sonnet-4', 'openai/gpt-4o')"
+        },
+        "variant": {
+          "type": "string",
+          "description": "Thinking/reasoning mode variant (e.g., 'high', 'xhigh', 'max'). Applied to messages for models that support extended thinking.",
+          "examples": ["low", "medium", "high", "xhigh", "max"]
         }
       },
       "additionalProperties": false

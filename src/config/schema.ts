@@ -15,10 +15,11 @@ export type AgentName = z.infer<typeof AgentNameSchema>
 
 /**
  * Configuration for overriding an agent's settings
- * Only model override is supported - keeps it simple
+ * Supports model and variant overrides for thinking modes
  */
 export const AgentOverrideConfigSchema = z.object({
   model: z.string().optional(),
+  variant: z.string().optional(),
 })
 
 export type AgentOverrideConfig = z.infer<typeof AgentOverrideConfigSchema>

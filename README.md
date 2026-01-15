@@ -21,6 +21,7 @@ Zenox supercharges [OpenCode](https://opencode.ai) with specialized AI agents th
 
 - **4 Specialized Agents** — Explorer, Librarian, Oracle, UI Planner
 - **Background Tasks** — Fire multiple agents in parallel
+- **Thinking Mode Variants** — Configure thinking levels (high, xhigh, max) per agent
 - **Keyword Triggers** — `ultrawork`, `deep research`, `explore codebase`
 - **Session History** — Query past sessions to learn from previous work
 - **Code Intelligence** — Search symbols via LSP
@@ -184,6 +185,34 @@ Config saves to `~/.config/opencode/zenox.json`:
   }
 }
 ```
+
+### Thinking Mode Variants
+
+Configure thinking/reasoning levels for models that support extended thinking (like Claude, GPT with reasoning, etc.):
+
+```json
+{
+  "agents": {
+    "oracle": { 
+      "model": "anthropic/claude-opus-4-5",
+      "variant": "high"
+    },
+    "ui-planner": { 
+      "model": "openai/gpt-5.2-codex",
+      "variant": "xhigh"
+    }
+  }
+}
+```
+
+Available variants (model-dependent):
+- `low` — Minimal thinking
+- `medium` — Balanced thinking
+- `high` — Extended thinking
+- `xhigh` — Extra high thinking
+- `max` — Maximum reasoning depth
+
+Variants are applied safely — if an agent doesn't exist or the model doesn't support the variant, it gracefully falls back.
 
 ### Disable Agents or MCPs
 

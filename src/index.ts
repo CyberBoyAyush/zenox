@@ -30,6 +30,11 @@ import {
 import { TaskToastManager } from "./features/task-toast"
 import { createSessionTools } from "./tools/session"
 import { createCodeIntelligenceTools } from "./tools/code-intelligence"
+import {
+  resolveAgentVariant,
+  applyAgentVariant,
+  createFirstMessageVariantGate,
+} from "./shared"
 
 const ZenoxPlugin: Plugin = async (ctx) => {
   // Load user/project configuration
@@ -54,6 +59,9 @@ const ZenoxPlugin: Plugin = async (ctx) => {
   const sessionTools = createSessionTools(ctx.client)
   const codeIntelligenceTools = createCodeIntelligenceTools(ctx.client)
 
+  // Initialize variant gate for safe variant application on first message
+  const firstMessageVariantGate = createFirstMessageVariantGate()
+
   // Helper to apply model override from config
   const applyModelOverride = (
     agentName: AgentName,
@@ -74,11 +82,27 @@ const ZenoxPlugin: Plugin = async (ctx) => {
       ...codeIntelligenceTools,
     },
 
-    // Register chat.message hook (keyword detection for ultrawork/deep-research/explore)
+    // Register chat.message hook (variant handling + keyword detection)
     "chat.message": async (
       input: { sessionID: string; agent?: string },
       output: { parts: Array<{ type: string; text?: string }>; message: Record<string, unknown> }
     ) => {
+      // Apply agent variant safely (defensive - handles undefined agent)
+      const message = output.message as { variant?: string }
+
+      if (firstMessageVariantGate.shouldOverride(input.sessionID)) {
+        // First message in new session - apply configured variant
+        const variant = resolveAgentVariant(pluginConfig, input.agent)
+        if (variant !== undefined) {
+          message.variant = variant
+        }
+        firstMessageVariantGate.markApplied(input.sessionID)
+      } else {
+        // Subsequent messages - apply variant if not already set
+        applyAgentVariant(pluginConfig, input.agent, message)
+      }
+
+      // Run keyword detection (ultrawork/deep-research/explore)
       await keywordDetectorHook["chat.message"]?.(input, output)
     },
 
@@ -89,13 +113,31 @@ const ZenoxPlugin: Plugin = async (ctx) => {
       // Run auto-update hook (shows toast on startup, checks for updates)
       await autoUpdateHook.event(input)
 
-      // Track main session on creation
+      // Track main session on creation and mark for variant gate
       if (event.type === "session.created") {
         const props = event.properties as { info?: { id?: string; parentID?: string } }
         const sessionInfo = props?.info
+
+        // Mark session for variant gate (handles null checks internally)
+        firstMessageVariantGate.markSessionCreated(sessionInfo)
+
         // Only set main session if it's not a child session (no parent)
         if (sessionInfo?.id && !sessionInfo?.parentID) {
           backgroundManager.setMainSession(sessionInfo.id)
+        }
+      }
+
+      // Cleanup on session deletion
+      if (event.type === "session.deleted") {
+        const props = event.properties as { info?: { id?: string } }
+        const sessionID = props?.info?.id
+
+        // Clear from variant gate
+        firstMessageVariantGate.clear(sessionID)
+
+        // Clear main session if this was it
+        if (sessionID && sessionID === backgroundManager.getMainSession()) {
+          backgroundManager.setMainSession(undefined)
         }
       }
 
@@ -112,17 +154,30 @@ const ZenoxPlugin: Plugin = async (ctx) => {
         if (notification) {
           const mainSessionID = backgroundManager.getMainSession()
           if (mainSessionID) {
-            await ctx.client.session.prompt({
-              path: { id: mainSessionID },
-              body: {
-                // noReply: true = silent (don't trigger response)
-                // noReply: false = loud (trigger response)
-                noReply: !notification.allComplete,
-                // Preserve the agent mode that was active when task was launched
-                agent: notification.parentAgent,
-                parts: [{ type: "text", text: notification.message }],
-              },
-            })
+            // Send notification with retry logic for undefined agent errors
+            const sendNotification = async (omitAgent = false) => {
+              try {
+                await ctx.client.session.prompt({
+                  path: { id: mainSessionID },
+                  body: {
+                    // noReply: true = silent (don't trigger response)
+                    // noReply: false = loud (trigger response)
+                    noReply: !notification.allComplete,
+                    // Preserve the agent mode (omit if retry due to undefined agent)
+                    ...(omitAgent ? {} : { agent: notification.parentAgent }),
+                    parts: [{ type: "text", text: notification.message }],
+                  },
+                })
+              } catch (err) {
+                const errorMsg = err instanceof Error ? err.message : String(err)
+                // Retry without agent if we hit the undefined agent error
+                if (!omitAgent && (errorMsg.includes("agent.name") || errorMsg.includes("undefined"))) {
+                  return sendNotification(true)
+                }
+                // Silently ignore other errors
+              }
+            }
+            await sendNotification()
           }
           // Don't run todo enforcer for background task completions
           return

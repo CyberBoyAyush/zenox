@@ -25,7 +25,7 @@ export class BackgroundManager {
     this.toastManager = manager
   }
 
-  setMainSession(sessionID: string): void {
+  setMainSession(sessionID: string | undefined): void {
     this.mainSessionID = sessionID
   }
 
@@ -85,21 +85,35 @@ export class BackgroundManager {
     }
 
     // Fire-and-forget: send prompt without awaiting result
-    client.session
-      .prompt({
-        path: { id: sessionID },
-        body: {
-          agent: input.agent,
-          tools: { task: false }, // Prevent recursive background tasks
-          parts: [{ type: "text", text: input.prompt }],
-        },
-      })
-      .catch((err: Error) => {
-        // Handle async errors
+    // Includes retry logic for agent.name undefined errors
+    const sendPrompt = async (retryWithoutAgent = false) => {
+      try {
+        await client.session.prompt({
+          path: { id: sessionID },
+          body: {
+            // On retry, omit agent to use default
+            ...(retryWithoutAgent ? {} : { agent: input.agent }),
+            tools: { task: false }, // Prevent recursive background tasks
+            parts: [{ type: "text", text: input.prompt }],
+          },
+        })
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err)
+
+        // Detect the specific agent.name undefined error and retry without agent
+        if (
+          !retryWithoutAgent &&
+          (errorMsg.includes("agent.name") || errorMsg.includes("undefined is not an object"))
+        ) {
+          console.warn(`[zenox] Agent "${input.agent}" not found. Retrying with default agent.`)
+          return sendPrompt(true)
+        }
+
+        // Handle other errors
         const existingTask = this.tasks.get(task.id)
         if (existingTask) {
           existingTask.status = "failed"
-          existingTask.error = err.message ?? "Unknown error"
+          existingTask.error = errorMsg
           existingTask.completedAt = new Date()
 
           // Show failure toast
@@ -107,7 +121,10 @@ export class BackgroundManager {
             this.toastManager.showFailureToast(task.id, existingTask.error).catch(() => {})
           }
         }
-      })
+      }
+    }
+
+    sendPrompt().catch(() => {})
 
     return task
   }
