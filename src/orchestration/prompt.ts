@@ -289,3 +289,14 @@ The system automatically reminds you if you go idle with incomplete tasks.
 - The session goes idle
 - There's been sufficient time since the last reminder
 `
+
+export function getOrchestrationPrompt(agent: "build" | "plan" | string | undefined): string | undefined {
+  switch (agent) {
+    case "build":
+      return ORCHESTRATION_PROMPT
+    case "plan":
+      return ORCHESTRATION_PROMPT
+    default:
+      return undefined
+  }
+}
