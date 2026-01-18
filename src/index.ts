@@ -36,6 +36,7 @@ import {
 import { TaskToastManager } from "./features/task-toast"
 import { createSessionTools } from "./tools/session"
 import { createCodeIntelligenceTools } from "./tools/code-intelligence"
+import { createProjectGuidelinesTools } from "./tools/project-guidelines"
 import {
   resolveAgentVariant,
   applyAgentVariant,
@@ -61,9 +62,10 @@ const ZenoxPlugin: Plugin = async (ctx) => {
   const keywordDetectorHook = createKeywordDetectorHook(ctx)
   const todoEnforcerHook = createTodoEnforcerHook(ctx)
 
-  // Initialize session and code intelligence tools
+  // Initialize session, code intelligence, and project guidelines tools
   const sessionTools = createSessionTools(ctx.client)
   const codeIntelligenceTools = createCodeIntelligenceTools(ctx.client)
+  const projectGuidelinesTools = createProjectGuidelinesTools(ctx.directory)
 
   // Initialize variant gate for safe variant application on first message
   const firstMessageVariantGate = createFirstMessageVariantGate()
@@ -81,11 +83,12 @@ const ZenoxPlugin: Plugin = async (ctx) => {
   }
 
   return {
-    // Register all tools (background, session, code intelligence)
+    // Register all tools (background, session, code intelligence, project guidelines)
     tool: {
       ...backgroundTools,
       ...sessionTools,
       ...codeIntelligenceTools,
+      ...projectGuidelinesTools,
     },
 
     // Register chat.message hook (variant handling + keyword detection + agent tracking)

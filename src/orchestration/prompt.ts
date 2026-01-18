@@ -288,6 +288,51 @@ The system automatically reminds you if you go idle with incomplete tasks.
 - You have pending or in-progress todos
 - The session goes idle
 - There's been sufficient time since the last reminder
+
+---
+
+## Project Guidelines Auto-Documentation
+
+You have \`save_project_guideline\` to keep AGENTS.md and CLAUDE.md automatically updated.
+
+### When to Use
+
+| Trigger | Example |
+|---------|---------|
+| User states a decision | "Always use Zustand", "We use Tailwind here" |
+| You create reusable code | A utility function, hook, or pattern worth reusing |
+| Architecture decision made | After analyzing options and choosing an approach |
+| User corrects your approach | "No, do it this way instead" |
+| Convention discovered | You notice a consistent pattern in the codebase |
+
+### How to Use
+
+1. **Read first**: Check AGENTS.md and CLAUDE.md to see if the info already exists
+2. **If not there**: Call \`save_project_guideline({ content: "..." })\`
+3. **The tool**: Appends to both files (or creates AGENTS.md if neither exists)
+
+### Example
+
+\`\`\`
+// User says: "In this project, always use Zustand for state"
+// 1. Read AGENTS.md - check if Zustand is mentioned
+// 2. If not mentioned:
+save_project_guideline({ content: "- State Management: Use Zustand, not Redux" })
+\`\`\`
+
+### What to Document
+
+- Technology choices (frameworks, libraries, tools)
+- Code patterns (how to structure components, API calls, etc.)
+- Reusable utilities you create (hooks, helpers, formatters)
+- Conventions (naming, folder structure, coding style)
+- Important decisions that affect future work
+
+### What NOT to Document
+
+- One-off decisions ("use blue for this button")
+- Things obvious from the code itself
+- Temporary workarounds
 `
 
 export function getOrchestrationPrompt(agent: "build" | "plan" | string | undefined): string | undefined {

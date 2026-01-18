@@ -25,6 +25,7 @@ Zenox supercharges [OpenCode](https://opencode.ai) with specialized AI agents th
 - **Keyword Triggers** — `ultrawork`, `deep research`, `explore codebase`
 - **Session History** — Query past sessions to learn from previous work
 - **Code Intelligence** — Search symbols via LSP
+- **Project Guidelines Auto-Update** — Automatically keeps AGENTS.md and CLAUDE.md up-to-date
 - **Todo Continuation** — Auto-reminds when tasks are incomplete
 - **Auto-Updates** — Toast notification when new version available
 
@@ -164,6 +165,43 @@ Zenox automatically reminds you to continue working when:
 - There's been enough time since the last reminder (10 second cooldown)
 
 This keeps you on track without manual intervention. The agent will be prompted to continue until all todos are complete or blocked.
+
+## Project Guidelines Auto-Update
+
+Zenox automatically keeps your `AGENTS.md` and `CLAUDE.md` files up-to-date with important decisions, patterns, and conventions.
+
+### The Problem
+
+Developers forget to update documentation. Important decisions get lost. Team members repeat the same questions. Next session, the agent has no context.
+
+### The Solution
+
+Zenox detects important decisions and automatically documents them:
+
+```
+You: "In this project, always use Zustand for state management"
+→ Agent checks AGENTS.md — not documented yet
+→ Agent saves: "- State Management: Use Zustand, not Redux"
+→ Future sessions automatically know this
+```
+
+### What Gets Documented
+
+| Trigger | Example |
+|---------|---------|
+| User decision | "Always use Tailwind", "We use this API pattern" |
+| Architecture choice | Agent decides between approaches after analysis |
+| Reusable code | Agent creates a utility worth reusing |
+| Convention discovered | Agent notices consistent patterns in codebase |
+
+### How It Works
+
+1. Agent recognizes something important
+2. Reads `AGENTS.md` / `CLAUDE.md` to check if already documented
+3. If not there → calls `save_project_guideline` to add it
+4. Both files get updated (or `AGENTS.md` created if neither exists)
+
+**Zero manual work** — your project documentation stays current automatically.
 
 ## Configuration
 
