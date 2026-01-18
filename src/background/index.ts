@@ -11,4 +11,5 @@ export type {
   TaskStatus,
   LaunchInput,
   CompletionNotification,
+  ParentModel,
 } from "./types"

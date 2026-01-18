@@ -10,6 +10,7 @@
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { OpencodeClient } from "@opencode-ai/sdk"
 import type { BackgroundManager } from "./manager"
+import { getSessionModel } from "../orchestration/session-agent-tracker"
 
 export type BackgroundTools = {
   [key: string]: ToolDefinition
@@ -39,12 +40,16 @@ Use for independent research tasks that benefit from parallelism.`,
     },
     async execute(args, context) {
       try {
+        // Get current model from session context
+        const parentModel = getSessionModel(context.sessionID)
+
         const task = await manager.launch(client, {
           agent: args.agent,
           description: args.description,
           prompt: args.prompt,
           parentSessionID: context.sessionID,
-          parentAgent: context.agent, // Track which agent (plan/build) launched this task
+          parentAgent: context.agent,
+          parentModel, // Track which model was active when task was launched
         })
 
         const activeTasks = manager.listActiveTasks()

@@ -71,6 +71,7 @@ export class BackgroundManager {
       status: "running",
       startedAt: new Date(),
       parentAgent: input.parentAgent,
+      parentModel: input.parentModel,
     }
 
     this.tasks.set(task.id, task)
@@ -279,8 +280,9 @@ ${runningTasks.length} task(s) still running. Continue working.
 </system-reminder>`
     }
 
-    // Get parentAgent from the first completed task (all tasks share same parent)
+    // Get parent context from the first completed task (all tasks share same parent)
     const parentAgent = completedTasks[0]?.parentAgent
+    const parentModel = completedTasks[0]?.parentModel
 
     return {
       allComplete,
@@ -288,6 +290,7 @@ ${runningTasks.length} task(s) still running. Continue working.
       completedTasks,
       runningCount: runningTasks.length,
       parentAgent,
+      parentModel,
     }
   }
 

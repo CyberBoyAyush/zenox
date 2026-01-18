@@ -5,6 +5,11 @@
 
 export type TaskStatus = "running" | "completed" | "failed" | "cancelled"
 
+export interface ParentModel {
+  providerID: string
+  modelID: string
+}
+
 export interface BackgroundTask {
   id: string
   sessionID: string
@@ -16,6 +21,7 @@ export interface BackgroundTask {
   completedAt?: Date
   error?: string
   parentAgent?: string // Agent that was active when task was launched (plan/build)
+  parentModel?: ParentModel // Model that was active when task was launched
 }
 
 export interface LaunchInput {
@@ -24,6 +30,7 @@ export interface LaunchInput {
   description: string
   parentSessionID: string
   parentAgent?: string // Agent that was active when task was launched (plan/build)
+  parentModel?: ParentModel // Model that was active when task was launched
 }
 
 export interface CompletionNotification {
@@ -32,4 +39,5 @@ export interface CompletionNotification {
   completedTasks: BackgroundTask[]
   runningCount: number
   parentAgent?: string // Agent to return notification to (preserves mode)
+  parentModel?: ParentModel // Model to return notification to (preserves model)
 }

@@ -14,6 +14,7 @@
 
 import type { PluginInput } from "@opencode-ai/plugin"
 import type { Event, Todo, Session } from "@opencode-ai/sdk"
+import { getSessionContext } from "../../orchestration/session-agent-tracker"
 
 const COOLDOWN_MS = 10_000 // 10 seconds between reminders
 const TOAST_DURATION = 3000
@@ -155,13 +156,18 @@ ${todoList}
 
 ${statusLine}`
 
-      // Send continuation prompt with agent preservation
-      const sendPrompt = async (omitAgent = false) => {
+      // Get model context from session tracker
+      const sessionContext = getSessionContext(sessionID)
+      const model = sessionContext?.model
+
+      // Send continuation prompt with agent and model preservation
+      const sendPrompt = async (omitContext = false) => {
         await ctx.client.session.prompt({
           path: { id: sessionID },
           body: {
             noReply: false,
-            ...(omitAgent || !agent ? {} : { agent }),
+            ...(omitContext || !agent ? {} : { agent }),
+            ...(omitContext || !model ? {} : { model }),
             parts: [{ type: "text", text: prompt }],
           },
         })
@@ -170,9 +176,9 @@ ${statusLine}`
       try {
         await sendPrompt()
       } catch (err) {
-        // Retry without agent if we hit undefined agent error
+        // Retry without agent/model if we hit undefined error
         const errorMsg = err instanceof Error ? err.message : String(err)
-        if (errorMsg.includes("agent") || errorMsg.includes("undefined")) {
+        if (errorMsg.includes("agent") || errorMsg.includes("model") || errorMsg.includes("undefined")) {
           try {
             await sendPrompt(true)
           } catch {

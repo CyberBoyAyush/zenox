@@ -20,7 +20,7 @@ import {
 } from "./agents"
 import { getOrchestrationPrompt } from "./orchestration/prompt"
 import {
-  setSessionAgent,
+  setSessionContext,
   getSessionAgent,
   clearSessionAgent,
   getOrchestrationAgentType,
@@ -90,11 +90,11 @@ const ZenoxPlugin: Plugin = async (ctx) => {
 
     // Register chat.message hook (variant handling + keyword detection + agent tracking)
     "chat.message": async (
-      input: { sessionID: string; agent?: string },
+      input: { sessionID: string; agent?: string; model?: { providerID: string; modelID: string } },
       output: { parts: Array<{ type: string; text?: string }>; message: Record<string, unknown> }
     ) => {
-      // Track agent for this session (used by system transform hook)
-      setSessionAgent(input.sessionID, input.agent)
+      // Track agent and model for this session (used by system transform hook and reminders)
+      setSessionContext(input.sessionID, { agent: input.agent, model: input.model })
 
       // Apply agent variant safely (defensive - handles undefined agent)
       const message = output.message as { variant?: string }
@@ -186,8 +186,8 @@ const ZenoxPlugin: Plugin = async (ctx) => {
         if (notification) {
           const mainSessionID = backgroundManager.getMainSession()
           if (mainSessionID) {
-            // Send notification with retry logic for undefined agent errors
-            const sendNotification = async (omitAgent = false) => {
+            // Send notification with retry logic for undefined agent/model errors
+            const sendNotification = async (omitContext = false) => {
               try {
                 await ctx.client.session.prompt({
                   path: { id: mainSessionID },
@@ -195,15 +195,16 @@ const ZenoxPlugin: Plugin = async (ctx) => {
                     // noReply: true = silent (don't trigger response)
                     // noReply: false = loud (trigger response)
                     noReply: !notification.allComplete,
-                    // Preserve the agent mode (omit if retry due to undefined agent)
-                    ...(omitAgent ? {} : { agent: notification.parentAgent }),
+                    // Preserve the agent and model (omit if retry due to undefined error)
+                    ...(omitContext ? {} : { agent: notification.parentAgent }),
+                    ...(omitContext ? {} : { model: notification.parentModel }),
                     parts: [{ type: "text", text: notification.message }],
                   },
                 })
               } catch (err) {
                 const errorMsg = err instanceof Error ? err.message : String(err)
-                // Retry without agent if we hit the undefined agent error
-                if (!omitAgent && (errorMsg.includes("agent.name") || errorMsg.includes("undefined"))) {
+                // Retry without agent/model if we hit the undefined error
+                if (!omitContext && (errorMsg.includes("agent") || errorMsg.includes("model") || errorMsg.includes("undefined"))) {
                   return sendNotification(true)
                 }
                 // Silently ignore other errors
