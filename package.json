@@ -1,6 +1,6 @@
 {
   "name": "zenox",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "OpenCode plugin with specialized agents (explorer, librarian, oracle, ui-planner), background tasks for parallel execution, and smart orchestration",
   "author": "Ayush",
   "license": "MIT",
