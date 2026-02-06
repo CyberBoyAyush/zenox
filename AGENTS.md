@@ -51,7 +51,7 @@ bun run typecheck    # Type check without emitting
 |-------|---------|---------------|
 | explorer | Codebase search, file discovery | claude-haiku-4-5 |
 | librarian | Library research, docs lookup | claude-sonnet-4-5 |
-| oracle | Architecture decisions, debugging | gpt-5.2 |
+| oracle | Architecture decisions, debugging | gpt-5.3-codex |
 | ui-planner | Frontend design, CSS, animations | gemini-3-pro-high |
 
 ## Configuration

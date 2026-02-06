@@ -25,7 +25,7 @@ export const AGENTS: AgentInfo[] = [
   {
     name: "oracle",
     displayName: "Oracle",
-    defaultModel: "openai/gpt-5.2",
+    defaultModel: "openai/gpt-5.3-codex",
     description: "Strategic technical advisor",
   },
   {
@@ -39,7 +39,7 @@ export const AGENTS: AgentInfo[] = [
 export const DEFAULT_MODELS: Record<AgentName, string> = {
   explorer: "anthropic/claude-haiku-4-5",
   librarian: "anthropic/claude-sonnet-4-5",
-  oracle: "openai/gpt-5.2",
+  oracle: "openai/gpt-5.3-codex",
   "ui-planner": "google/gemini-3-pro-high",
 }
 
