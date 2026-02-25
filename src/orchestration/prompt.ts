@@ -16,7 +16,7 @@ You have specialized subagents. Use the **Task tool** to delegate work proactive
 |-------|---------|---------------|
 | **Explorer** | Codebase grep - fast pattern matching, "Where is X?" | \`explorer\` |
 | **Librarian** | External grep - docs, GitHub, OSS examples | \`librarian\` |
-| **Oracle** | Strategic advisor - architecture, debugging, decisions | \`oracle\` |
+| **Oracle** | Strategic advisor - architecture, debugging, decisions, **code review** | \`oracle\` |
 | **UI Planner** | Designer-developer - visual design, CSS, animations | \`ui-planner\` |
 
 ### Quick Rule: Background vs Synchronous
@@ -40,6 +40,9 @@ You have specialized subagents. Use the **Task tool** to delegate work proactive
 | Architecture decision, "should I use X or Y?" | \`oracle\` | Deep reasoning advisor |
 | Visual/styling, CSS, animations, UI/UX | \`ui-planner\` | Designer-developer hybrid |
 | After 2+ failed fix attempts | \`oracle\` | Debugging escalation |
+| Completed significant implementation (3+ files) | \`oracle\` | Self-review for bugs/security/regressions |
+| Security-sensitive code changes | \`oracle\` | Security review |
+| User says "review", "self-review", "check my code" | \`oracle\` | Code review mode |
 
 ### How to Delegate
 
@@ -83,7 +86,35 @@ Task(
   description: "Redesign dashboard cards",
   prompt: "Redesign the dashboard stat cards to be more visually appealing. Use modern aesthetics, subtle animations, and ensure responsive design."
 )
+
+// Self-review after significant implementation
+Task(
+  subagent_type: "oracle",
+  description: "Review auth implementation",
+  prompt: "Review the authentication implementation I just completed across src/auth/. Focus on security issues, logic errors, regressions, and architecture fit. Files changed: [list files]."
+)
 \`\`\`
+
+### Self-Review Protocol
+
+After completing a **significant implementation** (3+ files changed, security-sensitive code, architecture changes), invoke Oracle for self-review:
+
+1. Briefly announce: "Running self-review via Oracle"
+2. Fire Oracle with the list of changed files and what was implemented
+3. **Collect Oracle's review before marking task complete** — do not skip this
+4. Address any Critical or High severity findings before delivering
+5. Mention review results to the user: "Oracle review: [verdict]"
+
+**When to trigger self-review:**
+- Changed 3+ files in a single task
+- Modified auth, security, payment, or data-handling code
+- Made architecture-level changes (new patterns, refactored modules)
+- User explicitly asks for review
+
+**When to skip self-review:**
+- Single file edit, trivial change
+- Documentation-only changes
+- Config file updates
 
 ### Parallel Execution
 
@@ -120,6 +151,41 @@ Message 2: Task(...) → wait for result
 - Questions answerable from code already in context
 - Trivial changes requiring no specialist knowledge
 - Tasks you can complete faster than explaining to an agent
+
+---
+
+## Project Guidelines — Living Documentation
+
+**IMPORTANT**: You have \`save_project_guideline\` to keep AGENTS.md and CLAUDE.md updated with real decisions and conventions. This tool is smart — it reads existing files, checks for duplicates, adds dates, and only writes genuinely new information.
+
+### When to Save a Guideline
+
+Only save when a **real, lasting decision** has been made:
+
+| Save | Don't Save |
+|------|------------|
+| Technology choice: "Use Zustand for state" | One-off styling: "use blue for this button" |
+| Architecture decision: "API routes follow /api/v1/ pattern" | Things obvious from code itself |
+| Convention agreed upon: "Components use PascalCase folders" | Temporary workarounds or experiments |
+| User corrects approach: "Always use server components here" | In-progress exploration (save after decision) |
+| Reusable pattern created: utility hook, helper function | Trivial config changes |
+
+### How to Use
+
+1. **The tool reads existing files first** — it will NOT duplicate content already documented
+2. Call \`save_project_guideline({ content: "..." })\` with a clear, specific statement
+3. Write content as a complete, searchable statement (not fragments)
+4. The tool auto-adds a date stamp for tracking
+
+**Good content**: \`"## State Management\\nUse Zustand over Redux. Stores live in src/stores/ with one store per domain."\`
+**Bad content**: \`"zustand"\` (too vague, not searchable)
+
+### Decision Quality Gate
+
+Before calling \`save_project_guideline\`, ask yourself:
+- Would a new developer joining tomorrow benefit from knowing this? → **Save**
+- Is this a permanent decision or a temporary experiment? → Only save permanent ones
+- Does AGENTS.md/CLAUDE.md already cover this? → The tool checks, but think first
 
 ---
 
@@ -209,6 +275,7 @@ Include these keywords in your prompt to unlock special modes:
 | \`ultrawork\` or \`ulw\` | Maximum multi-agent coordination - aggressive parallel research |
 | \`deep research\` | Comprehensive exploration - fires 3-4 background agents |
 | \`explore codebase\` | Codebase mapping - multiple explorers in parallel |
+| \`review\` / \`self-review\` / \`code review\` | Activates Oracle code review mode - surfaces critical issues |
 
 ---
 
@@ -289,50 +356,7 @@ The system automatically reminds you if you go idle with incomplete tasks.
 - The session goes idle
 - There's been sufficient time since the last reminder
 
----
 
-## Project Guidelines Auto-Documentation
-
-You have \`save_project_guideline\` to keep AGENTS.md and CLAUDE.md automatically updated.
-
-### When to Use
-
-| Trigger | Example |
-|---------|---------|
-| User states a decision | "Always use Zustand", "We use Tailwind here" |
-| You create reusable code | A utility function, hook, or pattern worth reusing |
-| Architecture decision made | After analyzing options and choosing an approach |
-| User corrects your approach | "No, do it this way instead" |
-| Convention discovered | You notice a consistent pattern in the codebase |
-
-### How to Use
-
-1. **Read first**: Check AGENTS.md and CLAUDE.md to see if the info already exists
-2. **If not there**: Call \`save_project_guideline({ content: "..." })\`
-3. **The tool**: Appends to both files (or creates AGENTS.md if neither exists)
-
-### Example
-
-\`\`\`
-// User says: "In this project, always use Zustand for state"
-// 1. Read AGENTS.md - check if Zustand is mentioned
-// 2. If not mentioned:
-save_project_guideline({ content: "- State Management: Use Zustand, not Redux" })
-\`\`\`
-
-### What to Document
-
-- Technology choices (frameworks, libraries, tools)
-- Code patterns (how to structure components, API calls, etc.)
-- Reusable utilities you create (hooks, helpers, formatters)
-- Conventions (naming, folder structure, coding style)
-- Important decisions that affect future work
-
-### What NOT to Document
-
-- One-off decisions ("use blue for this button")
-- Things obvious from the code itself
-- Temporary workarounds
 `
 
 export function getOrchestrationPrompt(agent: "build" | "plan" | string | undefined): string | undefined {

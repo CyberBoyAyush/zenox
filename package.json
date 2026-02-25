@@ -1,6 +1,6 @@
 {
   "name": "zenox",
-  "version": "1.5.1",
+  "version": "1.6.0",
   "description": "OpenCode plugin with specialized agents (explorer, librarian, oracle, ui-planner), background tasks for parallel execution, and smart orchestration",
   "author": "Ayush",
   "license": "MIT",
@@ -61,12 +61,12 @@
   },
   "dependencies": {
     "@clack/prompts": "^0.11.0",
-    "@opencode-ai/plugin": "^1.1.12",
-    "@opencode-ai/sdk": "^1.1.12",
+    "@opencode-ai/plugin": "^1.2.14",
+    "@opencode-ai/sdk": "^1.2.14",
     "commander": "^14.0.0",
     "picocolors": "^1.1.1",
     "strip-json-comments": "^5.0.3",
-    "zod": "^3.24.1"
+    "zod": "^4.1.8"
   },
   "devDependencies": {
     "bun-types": "latest",

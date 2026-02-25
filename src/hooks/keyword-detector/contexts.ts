@@ -77,7 +77,32 @@ background_task(agent="explorer", description="Find usage examples", prompt="...
 \`\`\`
 </explore-mode>`
 
-export type KeywordType = "ultrawork" | "deep-research" | "explore"
+export const REVIEW_CONTEXT = `<review-mode>
+REVIEW MODE — Code review and self-review active.
+
+**Required actions**:
+1. Invoke Oracle for a thorough code review of the recent implementation
+2. Oracle will use its Code Review Mode: structured findings with severity levels
+3. You MUST collect Oracle's review before marking the task complete
+4. Address any Critical or High severity findings before delivering
+
+**Review pattern**:
+\`\`\`
+// Fire Oracle for code review
+Task(
+  subagent_type: "oracle",
+  description: "Review recent changes",
+  prompt: "Review the implementation I just completed. Focus on correctness, security, regressions, and architecture fit. Files changed: [list the files you modified]."
+)
+
+// Wait for Oracle's review → address Critical/High findings → deliver
+\`\`\`
+
+**What Oracle reviews**: correctness, security, regressions, architecture fit, performance.
+**Verdict categories**: Ship it / Ship with minor fixes / Needs changes / Needs rethinking.
+</review-mode>`
+
+export type KeywordType = "ultrawork" | "deep-research" | "explore" | "review"
 
 export interface KeywordConfig {
   type: KeywordType
@@ -115,6 +140,15 @@ export const KEYWORD_CONFIGS: KeywordConfig[] = [
     toast: {
       title: "🔍 Explore Mode",
       message: "Codebase exploration active. Multiple explorers will run.",
+    },
+  },
+  {
+    type: "review",
+    pattern: /\b(self[-\s]?review|review\s*(my|the|this)?\s*(code|changes|implementation|work)|code\s*review)\b/i,
+    context: REVIEW_CONTEXT,
+    toast: {
+      title: "🔎 Review Mode",
+      message: "Code review via Oracle activated. Critical issues will be surfaced.",
     },
   },
 ]
