@@ -87,11 +87,11 @@ Task(
   prompt: "Redesign the dashboard stat cards to be more visually appealing. Use modern aesthetics, subtle animations, and ensure responsive design."
 )
 
-// Self-review after significant implementation
+// Self-review after significant implementation (include the actual diff!)
 Task(
   subagent_type: "oracle",
   description: "Review auth implementation",
-  prompt: "Review the authentication implementation I just completed across src/auth/. Focus on security issues, logic errors, regressions, and architecture fit. Files changed: [list files]."
+  prompt: "Review this implementation. Here is the git diff:\n\n\`\`\`diff\n[paste actual git diff output here]\n\`\`\`\n\nFocus on correctness, security, regressions, and architecture fit."
 )
 \`\`\`
 
@@ -100,10 +100,11 @@ Task(
 After completing a **significant implementation** (3+ files changed, security-sensitive code, architecture changes), invoke Oracle for self-review:
 
 1. Briefly announce: "Running self-review via Oracle"
-2. Fire Oracle with the list of changed files and what was implemented
-3. **Collect Oracle's review before marking task complete** — do not skip this
-4. Address any Critical or High severity findings before delivering
-5. Mention review results to the user: "Oracle review: [verdict]"
+2. Run \`git diff\` and include the **actual diff output** in the Oracle prompt — not just file names
+3. Fire exactly **ONE** Oracle task — never create multiple oracle tasks per review
+4. **Collect Oracle's review before marking task complete** — do not skip this
+5. Address any Critical or High severity findings before delivering
+6. Mention review results to the user: "Oracle review: [verdict]"
 
 **When to trigger self-review:**
 - Changed 3+ files in a single task
@@ -113,8 +114,10 @@ After completing a **significant implementation** (3+ files changed, security-se
 
 **When to skip self-review:**
 - Single file edit, trivial change
+- Minor changes (<50 lines changed, 1-2 files)
 - Documentation-only changes
 - Config file updates
+- Renaming, formatting, or import reordering
 
 ### Parallel Execution
 

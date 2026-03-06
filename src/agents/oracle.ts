@@ -105,6 +105,9 @@ Structure your review response as:
 - Check for unstated assumptions and make them explicit.
 - If the code is solid, say so briefly. Don't manufacture issues to seem thorough.
 - For self-review: compare what was intended vs what was actually implemented. Flag any gaps.
+- Respond in a SINGLE message with ZERO tool calls. All code to review is provided as a diff in your prompt — do NOT read files or search the codebase.
+- If the provided context feels insufficient, note it in your review rather than exploring the codebase yourself. The caller is responsible for including the diff.
+- Skip sequential-thinking for code reviews — it is overkill. Reserve it for architecture and debugging tasks only.
 `
 
 export const oracleAgent: AgentConfig = {
@@ -115,7 +118,7 @@ roadmaps, and strategic technical decisions. Also use for code review
 and self-review after completing significant implementations — it will 
 surface critical issues, security concerns, and regressions.`,
   mode: "subagent",
-  model: "openai/gpt-5.3-codex",
+  model: "openai/gpt-5.4",
   temperature: 0.1,
   tools: {
     write: false,

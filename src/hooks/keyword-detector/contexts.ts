@@ -81,24 +81,33 @@ export const REVIEW_CONTEXT = `<review-mode>
 REVIEW MODE — Code review and self-review active.
 
 **Required actions**:
-1. Invoke Oracle for a thorough code review of the recent implementation
-2. Oracle will use its Code Review Mode: structured findings with severity levels
-3. You MUST collect Oracle's review before marking the task complete
-4. Address any Critical or High severity findings before delivering
+1. Run \`git diff\` (or \`git diff HEAD~1\`) to capture the actual changes
+2. Fire exactly ONE Oracle Task call — include the full diff output in the prompt
+3. Do NOT create multiple oracle tasks (one per file, one per concern, etc.)
+4. Oracle reviews the diff directly — it will NOT read files or search the codebase
+5. Collect Oracle's review before marking the task complete
+6. Address any Critical or High severity findings before delivering
 
 **Review pattern**:
 \`\`\`
-// Fire Oracle for code review
+// Step 1: Get the diff
+const diff = Bash("git diff HEAD~1")
+
+// Step 2: Fire ONE oracle task with the diff included
 Task(
   subagent_type: "oracle",
   description: "Review recent changes",
-  prompt: "Review the implementation I just completed. Focus on correctness, security, regressions, and architecture fit. Files changed: [list the files you modified]."
+  prompt: "Review this implementation. Here is the git diff:\\n\\n\`\`\`diff\\n[actual diff output]\\n\`\`\`\\n\\nFocus on correctness, security, regressions, and architecture fit."
 )
 
-// Wait for Oracle's review → address Critical/High findings → deliver
+// Step 3: Wait for verdict → address Critical/High findings → deliver
 \`\`\`
 
-**What Oracle reviews**: correctness, security, regressions, architecture fit, performance.
+**Anti-patterns (DO NOT do these)**:
+- Creating separate oracle tasks per file or per concern area
+- Invoking oracle with just file names and no diff/code content
+- Running multiple review passes or follow-up oracle calls
+
 **Verdict categories**: Ship it / Ship with minor fixes / Needs changes / Needs rethinking.
 </review-mode>`
 
