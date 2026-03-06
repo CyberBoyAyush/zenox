@@ -85,6 +85,7 @@ Specify thoroughness: "quick" for basic, "medium" for moderate,
 "very thorough" for comprehensive analysis.`,
   mode: "subagent",
   model: "anthropic/claude-haiku-4-5",
+  color: "#3B82F6",
   temperature: 0.1,
   tools: {
     write: false,

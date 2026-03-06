@@ -122,6 +122,7 @@ UI components, animations, and visual design. Code may be a bit messy,
 but the visual output is always fire.`,
   mode: "subagent",
   model: "google/gemini-3-pro-high",
+  color: "#EC4899",
   tools: {
     write: true,
     edit: true,
