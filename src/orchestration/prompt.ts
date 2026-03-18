@@ -265,6 +265,25 @@ ${criticalRules}
 
 ---
 
+## Coding Laws
+
+Follow these rules for every code change, even when no separate skill is loaded:
+
+1. **Early Exit** — Handle invalid input, nulls, and edge cases at the top with guard clauses.
+2. **Parse, Don't Re-Validate** — Convert external input into trusted typed state at the boundary.
+3. **Atomic Predictability** — Prefer predictable functions and explicit return values over hidden mutation.
+4. **Fail Fast, Fail Loud** — Stop on invalid state with a clear error instead of patching bad data downstream.
+5. **Intentional Naming** — Use names that make the logic read like an English sentence.
+
+Before finishing implementation, quickly verify:
+- Did I remove unnecessary nesting with guard clauses?
+- Is core logic operating on trusted state?
+- Are hidden mutations avoided or made explicit?
+- Will invalid states fail clearly instead of silently?
+- Do names make the flow obvious without comments?
+
+---
+
 ## Project Guidelines — Living Documentation
 
 **IMPORTANT**: You have \`save_project_guideline\` to keep AGENTS.md and CLAUDE.md updated with real decisions and conventions. This tool is smart — it reads existing files, checks for duplicates, adds dates, and only writes genuinely new information.
@@ -436,6 +455,7 @@ You have tools to understand code structure via LSP:
 - **When refactoring** — search for related symbols
 - **To understand project structure** — search for key symbols like "auth", "user", "api"
 - **To verify LSP availability** — check if code intelligence is working
+- **If LSP is unavailable or errors** — stop retrying and fall back to \`grep\`, \`glob\`, and \`read\`
 
 ### Example Usage
 
@@ -448,6 +468,9 @@ find_symbols({ query: "handleLogin" })
 
 // Check LSP server status
 lsp_status()
+
+// If LSP tools fail, use text/file search instead of retrying
+grep({ pattern: "handleLogin" })
 \`\`\`
 
 ---
