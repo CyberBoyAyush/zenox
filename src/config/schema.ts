@@ -36,12 +36,19 @@ export const AgentOverridesSchema = z.object({
 
 export type AgentOverrides = z.infer<typeof AgentOverridesSchema>
 
+export const AutoUpdateConfigSchema = z.object({
+  show_startup_toast: z.boolean().optional(),
+})
+
+export type AutoUpdateConfig = z.infer<typeof AutoUpdateConfigSchema>
+
 /**
  * Main configuration schema for zenox
  */
 export const ZenoxConfigSchema = z.object({
   $schema: z.string().optional(),
   agents: AgentOverridesSchema.optional(),
+  auto_update: AutoUpdateConfigSchema.optional(),
   disabled_agents: z.array(AgentNameSchema).optional(),
   disabled_mcps: z.array(McpNameSchema).optional(),
 })

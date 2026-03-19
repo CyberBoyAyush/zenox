@@ -58,7 +58,9 @@ const ZenoxPlugin: Plugin = async (ctx) => {
   const backgroundTools = createBackgroundTools(backgroundManager, ctx.client)
 
   // Initialize hooks
-  const autoUpdateHook = createAutoUpdateHook(ctx)
+  const autoUpdateHook = createAutoUpdateHook(ctx, {
+    showStartupToast: pluginConfig.auto_update?.show_startup_toast,
+  })
   const keywordDetectorHook = createKeywordDetectorHook(ctx)
   const todoEnforcerHook = createTodoEnforcerHook(ctx)
 
