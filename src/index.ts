@@ -132,7 +132,7 @@ const ZenoxPlugin: Plugin = async (ctx) => {
       const agentType = getOrchestrationAgentType(agent)
       
       // Only inject for build/plan agents
-      const prompt = getOrchestrationPrompt(agentType)
+      const prompt = getOrchestrationPrompt(agentType, disabledAgents)
       if (prompt) {
         output.system.push(prompt)
       }

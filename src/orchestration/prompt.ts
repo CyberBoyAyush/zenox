@@ -1,100 +1,152 @@
 /**
  * Orchestration prompt to inject into Build and Plan agents.
  * This teaches the primary agents how to delegate to specialized subagents using the Task tool.
+ *
+ * The prompt is generated dynamically based on which agents are enabled,
+ * so disabled agents are never mentioned to the AI.
  */
-export const ORCHESTRATION_PROMPT = `
 
----
+interface AgentMeta {
+  name: string
+  key: string
+  useFor: string
+  subagentType: string
+  execution: string
+  executionWhy: string
+  delegateTriggers: string[]
+  delegateWhy: string
+  priority?: string
+  criticalRule?: string
+  exampleCode?: string
+}
 
-## Sub-Agent Delegation
-
-You have specialized subagents. Use the **Task tool** to delegate work proactively.
-
-### Available Agents
-
-| Agent | Use For | subagent_type |
-|-------|---------|---------------|
-| **Explorer** | Codebase grep - fast pattern matching, "Where is X?" | \`explorer\` |
-| **Librarian** | External grep - docs, GitHub, OSS examples | \`librarian\` |
-| **Oracle** | Strategic advisor - architecture, debugging, decisions, **code review** | \`oracle\` |
-| **UI Planner** | Designer-developer - visual design, CSS, animations | \`ui-planner\` |
-
-### Quick Rule: Background vs Synchronous
-
-| Agent | Default Execution | Why |
-|-------|-------------------|-----|
-| Explorer | \`background_task\` | It's codebase grep - fire and continue |
-| Librarian | \`background_task\` | It's external grep - fire and continue |
-| Oracle | \`Task\` (sync) | Need strategic answer before proceeding |
-| UI Planner | \`Task\` (sync) | Implements changes, needs write access |
-
-**Mental Model**: Explorer & Librarian = **grep commands**. You don't wait for grep, you fire it and continue thinking.
-
-### When to Delegate (Fire Immediately)
-
-| Trigger | subagent_type | Why |
-|---------|---------------|-----|
-| "Where is X?", "Find Y", locate code | \`explorer\` | Fast codebase search |
-| External library, "how does X library work?" | \`librarian\` | Searches docs, GitHub, OSS |
-| 2+ modules involved, cross-cutting concerns | \`explorer\` | Multi-file pattern discovery |
-| Architecture decision, "should I use X or Y?" | \`oracle\` | Deep reasoning advisor |
-| Visual/styling, CSS, animations, UI/UX | \`ui-planner\` | Designer-developer hybrid |
-| After 2+ failed fix attempts | \`oracle\` | Debugging escalation |
-| Completed significant implementation (3+ files) | \`oracle\` | Self-review for bugs/security/regressions |
-| Security-sensitive code changes | \`oracle\` | Security review |
-| User says "review", "self-review", "check my code" | \`oracle\` | Code review mode |
-
-### How to Delegate
-
-Use the Task tool with these parameters:
-
-\`\`\`
-Task(
-  subagent_type: "explorer" | "librarian" | "oracle" | "ui-planner",
-  description: "Short 3-5 word task description",
-  prompt: "Detailed instructions for the agent"
-)
-\`\`\`
-
-**Example delegations:**
-
-\`\`\`
-// Find code in codebase
+const ALL_AGENTS: AgentMeta[] = [
+  {
+    name: "Explorer",
+    key: "explorer",
+    useFor: 'Codebase grep - fast pattern matching, "Where is X?"',
+    subagentType: "explorer",
+    execution: "`background_task`",
+    executionWhy: "It's codebase grep - fire and continue",
+    delegateTriggers: [
+      '"Where is X?", "Find Y", locate code | `explorer` | Fast codebase search',
+      "2+ modules involved, cross-cutting concerns | `explorer` | Multi-file pattern discovery",
+    ],
+    delegateWhy: "Fast codebase search",
+    priority: "**Explorer FIRST** — Always locate code before modifying unfamiliar areas",
+    exampleCode: `// Find code in codebase
 Task(
   subagent_type: "explorer",
   description: "Find auth middleware",
   prompt: "Find all authentication middleware implementations in this codebase. Return file paths and explain the auth flow."
-)
-
-// Research external library
+)`,
+  },
+  {
+    name: "Librarian",
+    key: "librarian",
+    useFor: "External grep - docs, GitHub, OSS examples",
+    subagentType: "librarian",
+    execution: "`background_task`",
+    executionWhy: "It's external grep - fire and continue",
+    delegateTriggers: [
+      'External library, "how does X library work?" | `librarian` | Searches docs, GitHub, OSS',
+    ],
+    delegateWhy: "Searches docs, GitHub, OSS",
+    priority: "**Librarian** — When dealing with external libraries/APIs you don't fully understand",
+    criticalRule: "**Fire librarian proactively** when unfamiliar libraries are involved",
+    exampleCode: `// Research external library
 Task(
   subagent_type: "librarian",
   description: "React Query caching docs",
   prompt: "How does React Query handle caching? Find official documentation and real-world examples with GitHub permalinks."
-)
-
-// Architecture decision
+)`,
+  },
+  {
+    name: "Oracle",
+    key: "oracle",
+    useFor: "Strategic advisor - architecture, debugging, decisions, **code review**",
+    subagentType: "oracle",
+    execution: "`Task` (sync)",
+    executionWhy: "Need strategic answer before proceeding",
+    delegateTriggers: [
+      'Architecture decision, "should I use X or Y?" | `oracle` | Deep reasoning advisor',
+      "After 2+ failed fix attempts | `oracle` | Debugging escalation",
+      "Completed significant implementation (3+ files) | `oracle` | Self-review for bugs/security/regressions",
+      'Security-sensitive code changes | `oracle` | Security review',
+      'User says "review", "self-review", "check my code" | `oracle` | Code review mode',
+    ],
+    delegateWhy: "Deep reasoning advisor",
+    priority: "**Oracle** — For complex decisions or after 2+ failed fix attempts",
+    criticalRule: "**Consult oracle BEFORE major architectural decisions**, not after",
+    exampleCode: `// Architecture decision
 Task(
   subagent_type: "oracle",
   description: "Redux vs Zustand analysis",
   prompt: "Analyze trade-offs between Redux and Zustand for this project. Consider bundle size, learning curve, and our existing patterns."
 )
 
-// UI/Visual work
-Task(
-  subagent_type: "ui-planner",
-  description: "Redesign dashboard cards",
-  prompt: "Redesign the dashboard stat cards to be more visually appealing. Use modern aesthetics, subtle animations, and ensure responsive design."
-)
-
 // Self-review after significant implementation (include the actual diff!)
 Task(
   subagent_type: "oracle",
   description: "Review auth implementation",
-  prompt: "Review this implementation. Here is the git diff:\n\n\`\`\`diff\n[paste actual git diff output here]\n\`\`\`\n\nFocus on correctness, security, regressions, and architecture fit."
-)
-\`\`\`
+  prompt: "Review this implementation. Here is the git diff:\\n\\n\`\`\`diff\\n[paste actual git diff output here]\\n\`\`\`\\n\\nFocus on correctness, security, regressions, and architecture fit."
+)`,
+  },
+  {
+    name: "UI Planner",
+    key: "ui-planner",
+    useFor: "Designer-developer - visual design, CSS, animations",
+    subagentType: "ui-planner",
+    execution: "`Task` (sync)",
+    executionWhy: "Implements changes, needs write access",
+    delegateTriggers: [
+      "Visual/styling, CSS, animations, UI/UX | `ui-planner` | Designer-developer hybrid",
+    ],
+    delegateWhy: "Designer-developer hybrid",
+    priority: "**UI Planner** — For ANY visual/styling work (never edit CSS/UI yourself)",
+    criticalRule: "**Never touch frontend visual/styling code yourself** — Always delegate to `ui-planner`",
+    exampleCode: `// UI/Visual work
+Task(
+  subagent_type: "ui-planner",
+  description: "Redesign dashboard cards",
+  prompt: "Redesign the dashboard stat cards to be more visually appealing. Use modern aesthetics, subtle animations, and ensure responsive design."
+)`,
+  },
+]
 
+function buildOrchestrationPrompt(enabledAgents: AgentMeta[]): string {
+  const agentTableRows = enabledAgents
+    .map((a) => `| **${a.name}** | ${a.useFor} | \`${a.subagentType}\` |`)
+    .join("\n")
+
+  const quickRuleRows = enabledAgents
+    .map((a) => `| ${a.name} | ${a.execution} | ${a.executionWhy} |`)
+    .join("\n")
+
+  const hasBackground = enabledAgents.some(
+    (a) => a.execution === "`background_task`"
+  )
+  const mentalModel = hasBackground
+    ? `\n**Mental Model**: ${enabledAgents
+        .filter((a) => a.execution === "`background_task`")
+        .map((a) => a.name)
+        .join(" & ")} = **grep commands**. You don't wait for grep, you fire it and continue thinking.\n`
+    : ""
+
+  const delegateTriggerRows = enabledAgents
+    .flatMap((a) => a.delegateTriggers)
+    .map((t) => `| ${t} |`)
+    .join("\n")
+
+  const subagentTypes = enabledAgents.map((a) => `"${a.subagentType}"`).join(" | ")
+
+  const exampleDelegations = enabledAgents
+    .filter((a) => a.exampleCode)
+    .map((a) => `\`\`\`\n${a.exampleCode}\n\`\`\``)
+    .join("\n\n")
+
+  const selfReviewSection = enabledAgents.some((a) => a.key === "oracle")
+    ? `
 ### Self-Review Protocol
 
 After completing a **significant implementation** (3+ files changed, security-sensitive code, architecture changes), invoke Oracle for self-review:
@@ -118,34 +170,90 @@ After completing a **significant implementation** (3+ files changed, security-se
 - Documentation-only changes
 - Config file updates
 - Renaming, formatting, or import reordering
+`
+    : ""
 
+  const parallelSection = hasBackground
+    ? `
 ### Parallel Execution
 
 To run multiple agents in parallel, call multiple Task tools in the **same response message**:
 
 \`\`\`
 // CORRECT: Multiple Task calls in ONE message = parallel execution
-Task(subagent_type: "explorer", description: "Find auth code", prompt: "...")
-Task(subagent_type: "librarian", description: "JWT best practices", prompt: "...")
+${enabledAgents
+  .filter((a) => a.execution === "`background_task`")
+  .slice(0, 2)
+  .map((a) => `Task(subagent_type: "${a.subagentType}", description: "Find ${a.name.toLowerCase()} code", prompt: "...")`)
+  .join("\n")}
 // Both run simultaneously
 
 // WRONG: One Task per message = sequential (slow)
 Message 1: Task(...) → wait for result
 Message 2: Task(...) → wait for result
 \`\`\`
+`
+    : ""
 
+  const priorityList = enabledAgents
+    .filter((a) => a.priority)
+    .map((a, i) => `${i + 1}. ${a.priority}`)
+    .join("\n")
+
+  const criticalRules = enabledAgents
+    .filter((a) => a.criticalRule)
+    .map((a, i) => `${i + 1}. ${a.criticalRule}`)
+    .join("\n")
+
+  return `
+
+---
+
+## Sub-Agent Delegation
+
+You have specialized subagents. Use the **Task tool** to delegate work proactively.
+
+### Available Agents
+
+| Agent | Use For | subagent_type |
+|-------|---------|---------------|
+${agentTableRows}
+
+### Quick Rule: Background vs Synchronous
+
+| Agent | Default Execution | Why |
+|-------|-------------------|-----|
+${quickRuleRows}
+${mentalModel}
+### When to Delegate (Fire Immediately)
+
+| Trigger | subagent_type | Why |
+|---------|---------------|-----|
+${delegateTriggerRows}
+
+### How to Delegate
+
+Use the Task tool with these parameters:
+
+\`\`\`
+Task(
+  subagent_type: ${subagentTypes},
+  description: "Short 3-5 word task description",
+  prompt: "Detailed instructions for the agent"
+)
+\`\`\`
+
+**Example delegations:**
+
+${exampleDelegations}
+${selfReviewSection}${parallelSection}
 ### Delegation Priority
 
-1. **Explorer FIRST** — Always locate code before modifying unfamiliar areas
-2. **Librarian** — When dealing with external libraries/APIs you don't fully understand
-3. **Oracle** — For complex decisions or after 2+ failed fix attempts
-4. **UI Planner** — For ANY visual/styling work (never edit CSS/UI yourself)
+${priorityList}
 
 ### Critical Rules
 
-1. **Never touch frontend visual/styling code yourself** — Always delegate to \`ui-planner\`
-2. **Fire librarian proactively** when unfamiliar libraries are involved
-3. **Consult oracle BEFORE major architectural decisions**, not after
+${criticalRules}
 4. **Verify delegated work** before marking task complete
 
 ### When to Handle Directly (Don't Delegate)
@@ -361,13 +469,18 @@ The system automatically reminds you if you go idle with incomplete tasks.
 
 
 `
+}
 
-export function getOrchestrationPrompt(agent: "build" | "plan" | string | undefined): string | undefined {
+export function getOrchestrationPrompt(
+  agent: "build" | "plan" | string | undefined,
+  disabledAgents: Set<string> = new Set()
+): string | undefined {
   switch (agent) {
     case "build":
-      return ORCHESTRATION_PROMPT
-    case "plan":
-      return ORCHESTRATION_PROMPT
+    case "plan": {
+      const enabledAgents = ALL_AGENTS.filter((a) => !disabledAgents.has(a.key))
+      return buildOrchestrationPrompt(enabledAgents)
+    }
     default:
       return undefined
   }
