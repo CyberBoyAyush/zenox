@@ -170,6 +170,11 @@ const ZenoxPlugin: Plugin = async (ctx) => {
         // Clear session agent tracking
         clearSessionAgent(sessionID)
 
+        // Clear background tasks tied to this session
+        if (sessionID) {
+          backgroundManager.detachParentSession(sessionID)
+        }
+
         // Clear main session if this was it
         if (sessionID && sessionID === backgroundManager.getMainSession()) {
           backgroundManager.setMainSession(undefined)
@@ -187,13 +192,13 @@ const ZenoxPlugin: Plugin = async (ctx) => {
 
         // If a background task completed, notify the main session
         if (notification) {
-          const mainSessionID = backgroundManager.getMainSession()
-          if (mainSessionID) {
+          const targetSessionID = notification.parentSessionID
+          if (targetSessionID) {
             // Send notification with retry logic for undefined agent/model errors
             const sendNotification = async (omitContext = false) => {
               try {
                 await ctx.client.session.prompt({
-                  path: { id: mainSessionID },
+                  path: { id: targetSessionID },
                   body: {
                     // noReply: true = silent (don't trigger response)
                     // noReply: false = loud (trigger response)
