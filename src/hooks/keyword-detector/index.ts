@@ -9,6 +9,7 @@
  */
 
 import type { PluginInput } from "@opencode-ai/plugin"
+import type { VariantMessage } from "../../shared"
 import { KEYWORD_CONFIGS, type KeywordConfig } from "./contexts"
 
 const TOAST_DURATION = 4000
@@ -21,7 +22,7 @@ interface MessagePart {
 
 interface ChatMessageOutput {
   parts: MessagePart[]
-  message: Record<string, unknown>
+  message: VariantMessage
 }
 
 function extractTextFromParts(parts: MessagePart[]): string {

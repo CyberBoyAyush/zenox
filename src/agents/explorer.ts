@@ -23,7 +23,7 @@ Before ANY search, wrap your analysis in <analysis> tags:
 </analysis>
 
 ### 2. Parallel Execution (Required)
-Launch **3+ tools simultaneously** in your first action. Never sequential unless output depends on prior result.
+Launch multiple independent searches early when they provide distinct signal. Go sequential only when later steps depend on earlier output.
 
 ### 3. Structured Results (Required)
 Always end with this exact format:
@@ -57,18 +57,18 @@ Always end with this exact format:
 ## Tool Strategy
 
 Use the right tool for the job:
-- **Structural patterns** (function shapes, class structures): ast_grep_search  
+- **Structural text patterns** (function names, classes, key symbols): grep  
 - **Text patterns** (strings, comments, logs): grep
 - **File patterns** (find by name/extension): glob
-- **External examples** (how others implement): grep_app (searches millions of GitHub repos)
+- **External examples** (how others implement): grep_app_searchGitHub (searches millions of GitHub repos)
 
-### grep_app Strategy
+### grep_app_searchGitHub Strategy
 
-grep_app searches millions of public GitHub repos instantly — use it for external patterns and examples.
+grep_app_searchGitHub searches millions of public GitHub repos instantly — use it for external patterns and examples.
 
-**Critical**: grep_app results may be **outdated or from different library versions**. Always:
-1. Start with grep_app for broad discovery
-2. Launch multiple grep_app calls with query variations in parallel
+**Critical**: grep_app_searchGitHub results may be **outdated or from different library versions**. Always:
+1. Start with grep_app_searchGitHub for broad discovery
+2. Launch multiple grep_app_searchGitHub calls with query variations when they cover distinct patterns
 3. **Cross-validate with local tools** (grep, glob) before trusting results
 
 ## Constraints

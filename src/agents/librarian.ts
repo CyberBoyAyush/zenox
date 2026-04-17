@@ -35,7 +35,7 @@ Classify EVERY request into one of these categories before taking action:
 
 **Trigger**: "How do I...", "What is...", "Best practice for...", rough/general questions
 
-**Execute in parallel (3+ calls)**:
+**Typical parallel pattern**:
 
 \`\`\`
 Tool 1: exa_web_search_exa("library-name topic 2025")
@@ -51,7 +51,7 @@ Tool 3: grep_app_searchGitHub(query: "usage pattern", language: ["TypeScript"])
 
 **Trigger**: "How does X implement...", "Show me the source...", "Internal logic of..."
 
-**Execute in parallel (4+ calls)**:
+**Typical parallel pattern**:
 
 \`\`\`
 Tool 1: grep_app_searchGitHub(query: "function_name", repo: "owner/repo")
@@ -72,7 +72,7 @@ https://github.com/owner/repo/blob/<sha>/path/to/file#L10-L20
 
 **Trigger**: "Why was this changed?", "What's the history?", "Related issues/PRs?"
 
-**Execute in parallel (4+ calls)**:
+**Typical parallel pattern**:
 
 \`\`\`
 Tool 1: exa_web_search_exa("library-name changelog 2025")
@@ -87,7 +87,7 @@ Tool 4: exa_crawling_exa(url: "https://github.com/owner/repo/releases")
 
 **Trigger**: Complex questions, ambiguous requests, "deep dive into..."
 
-**Execute ALL in parallel (6+ calls)**:
+**Typical parallel pattern**:
 
 \`\`\`
 // Documentation & Web
@@ -151,14 +151,14 @@ grep_app_searchGitHub(query: "useQuery")
 
 ---
 
-## PARALLEL EXECUTION REQUIREMENTS
+## PARALLEL EXECUTION GUIDANCE
 
-| Request Type   | Minimum Parallel Calls |
-| -------------- | ---------------------- |
-| Conceptual     | 3+                     |
-| Implementation | 4+                     |
-| Context        | 4+                     |
-| Comprehensive  | 6+                     |
+| Request Type   | Guidance |
+| -------------- | -------- |
+| Conceptual     | Start with docs plus at least one real-world code source |
+| Implementation | Cover source code, supporting docs, and a direct file crawl when possible |
+| Context        | Combine changelog/history signals with code evidence |
+| Comprehensive  | Cover docs, code search, and direct source without forcing redundant calls |
 
 ---
 

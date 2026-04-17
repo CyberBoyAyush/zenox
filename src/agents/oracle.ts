@@ -119,6 +119,7 @@ and self-review after completing significant implementations — it will
 surface critical issues, security concerns, and regressions.`,
   mode: "subagent",
   model: "openai/gpt-5.4",
+  variant: "high",
   color: "#F59E0B",
   temperature: 0.1,
   tools: {

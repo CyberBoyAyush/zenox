@@ -82,7 +82,7 @@ REVIEW MODE — Code review and self-review active.
 
 **Required actions**:
 1. Run \`git diff\` (or \`git diff HEAD~1\`) to capture the actual changes
-2. Fire exactly ONE Oracle Task call — include the full diff output in the prompt
+2. Fire exactly ONE Oracle \`task\` call — include the full diff output in the prompt
 3. Do NOT create multiple oracle tasks (one per file, one per concern, etc.)
 4. Oracle reviews the diff directly — it will NOT read files or search the codebase
 5. Collect Oracle's review before marking the task complete
@@ -91,10 +91,10 @@ REVIEW MODE — Code review and self-review active.
 **Review pattern**:
 \`\`\`
 // Step 1: Get the diff
-const diff = Bash("git diff HEAD~1")
+const diff = bash("git diff HEAD~1")
 
 // Step 2: Fire ONE oracle task with the diff included
-Task(
+task(
   subagent_type: "oracle",
   description: "Review recent changes",
   prompt: "Review this implementation. Here is the git diff:\\n\\n\`\`\`diff\\n[actual diff output]\\n\`\`\`\\n\\nFocus on correctness, security, regressions, and architecture fit."

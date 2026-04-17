@@ -1,6 +1,6 @@
 {
   "name": "zenox",
-  "version": "1.6.2",
+  "version": "1.6.3",
   "description": "OpenCode plugin with specialized agents (explorer, librarian, oracle, ui-planner), background tasks for parallel execution, and smart orchestration",
   "author": "Ayush",
   "license": "MIT",
@@ -23,7 +23,10 @@
     "build": "bun build src/index.ts --outdir dist --target bun --format esm && bun build src/cli/index.ts --outdir dist/cli --target node --format esm && tsc --emitDeclarationOnly",
     "clean": "rm -rf dist",
     "prepublishOnly": "bun run clean && bun run build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "test:smoke": "bun test test/smoke.test.ts",
+    "test:regression": "bun test test/regression.test.ts"
   },
   "keywords": [
     "zenox",
@@ -61,8 +64,8 @@
   },
   "dependencies": {
     "@clack/prompts": "^0.11.0",
-    "@opencode-ai/plugin": "^1.2.14",
-    "@opencode-ai/sdk": "^1.2.14",
+    "@opencode-ai/plugin": "^1.4.10",
+    "@opencode-ai/sdk": "^1.4.10",
     "commander": "^14.0.0",
     "picocolors": "^1.1.1",
     "strip-json-comments": "^5.0.3",

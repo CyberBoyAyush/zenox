@@ -41,6 +41,7 @@ import {
   resolveAgentVariant,
   applyAgentVariant,
   createFirstMessageVariantGate,
+  type VariantMessage,
 } from "./shared"
 
 const ZenoxPlugin: Plugin = async (ctx) => {
@@ -94,19 +95,22 @@ const ZenoxPlugin: Plugin = async (ctx) => {
     // Register chat.message hook (variant handling + keyword detection + agent tracking)
     "chat.message": async (
       input: { sessionID: string; agent?: string; model?: { providerID: string; modelID: string } },
-      output: { parts: Array<{ type: string; text?: string }>; message: Record<string, unknown> }
+      output: { parts: Array<{ type: string; text?: string }>; message: VariantMessage }
     ) => {
       // Track agent and model for this session (used by system transform hook and reminders)
       setSessionContext(input.sessionID, { agent: input.agent, model: input.model })
 
       // Apply agent variant safely (defensive - handles undefined agent)
-      const message = output.message as { variant?: string }
+      const message = output.message
 
       if (firstMessageVariantGate.shouldOverride(input.sessionID)) {
         // First message in new session - apply configured variant
         const variant = resolveAgentVariant(pluginConfig, input.agent)
         if (variant !== undefined) {
-          message.variant = variant
+          message.model = {
+            ...message.model,
+            variant,
+          }
         }
         firstMessageVariantGate.markApplied(input.sessionID)
       } else {

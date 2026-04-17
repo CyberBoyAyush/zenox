@@ -42,17 +42,31 @@ function mergeConfigs(
   base: ZenoxConfig,
   override: ZenoxConfig
 ): ZenoxConfig {
+  const mergedAgents = {
+    ...base.agents,
+  }
+
+  for (const [agentName, agentConfig] of Object.entries(override.agents ?? {})) {
+    mergedAgents[agentName as keyof typeof mergedAgents] = {
+      ...mergedAgents[agentName as keyof typeof mergedAgents],
+      ...agentConfig,
+    }
+  }
+
   return {
     ...base,
     ...override,
-    agents: {
-      ...base.agents,
-      ...override.agents,
-    },
+    agents: mergedAgents,
     disabled_agents: [
       ...new Set([
         ...(base.disabled_agents ?? []),
         ...(override.disabled_agents ?? []),
+      ]),
+    ],
+    disabled_mcps: [
+      ...new Set([
+        ...(base.disabled_mcps ?? []),
+        ...(override.disabled_mcps ?? []),
       ]),
     ],
   }

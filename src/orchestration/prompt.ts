@@ -1,6 +1,6 @@
 /**
  * Orchestration prompt to inject into Build and Plan agents.
- * This teaches the primary agents how to delegate to specialized subagents using the Task tool.
+ * This teaches the primary agents how to delegate to specialized subagents using the task tool.
  */
 export const ORCHESTRATION_PROMPT = `
 
@@ -8,7 +8,7 @@ export const ORCHESTRATION_PROMPT = `
 
 ## Sub-Agent Delegation
 
-You have specialized subagents. Use the **Task tool** to delegate work proactively.
+You have specialized subagents. Use the **task** tool to delegate work proactively.
 
 ### Available Agents
 
@@ -25,8 +25,8 @@ You have specialized subagents. Use the **Task tool** to delegate work proactive
 |-------|-------------------|-----|
 | Explorer | \`background_task\` | It's codebase grep - fire and continue |
 | Librarian | \`background_task\` | It's external grep - fire and continue |
-| Oracle | \`Task\` (sync) | Need strategic answer before proceeding |
-| UI Planner | \`Task\` (sync) | Implements changes, needs write access |
+| Oracle | \`task\` (sync) | Need strategic answer before proceeding |
+| UI Planner | \`task\` (sync) | Implements changes, needs write access |
 
 **Mental Model**: Explorer & Librarian = **grep commands**. You don't wait for grep, you fire it and continue thinking.
 
@@ -46,10 +46,10 @@ You have specialized subagents. Use the **Task tool** to delegate work proactive
 
 ### How to Delegate
 
-Use the Task tool with these parameters:
+Use the \`task\` tool with these parameters:
 
 \`\`\`
-Task(
+task(
   subagent_type: "explorer" | "librarian" | "oracle" | "ui-planner",
   description: "Short 3-5 word task description",
   prompt: "Detailed instructions for the agent"
@@ -60,35 +60,35 @@ Task(
 
 \`\`\`
 // Find code in codebase
-Task(
+task(
   subagent_type: "explorer",
   description: "Find auth middleware",
   prompt: "Find all authentication middleware implementations in this codebase. Return file paths and explain the auth flow."
 )
 
 // Research external library
-Task(
+task(
   subagent_type: "librarian",
   description: "React Query caching docs",
   prompt: "How does React Query handle caching? Find official documentation and real-world examples with GitHub permalinks."
 )
 
 // Architecture decision
-Task(
+task(
   subagent_type: "oracle",
   description: "Redux vs Zustand analysis",
   prompt: "Analyze trade-offs between Redux and Zustand for this project. Consider bundle size, learning curve, and our existing patterns."
 )
 
 // UI/Visual work
-Task(
+task(
   subagent_type: "ui-planner",
   description: "Redesign dashboard cards",
   prompt: "Redesign the dashboard stat cards to be more visually appealing. Use modern aesthetics, subtle animations, and ensure responsive design."
 )
 
 // Self-review after significant implementation (include the actual diff!)
-Task(
+task(
   subagent_type: "oracle",
   description: "Review auth implementation",
   prompt: "Review this implementation. Here is the git diff:\n\n\`\`\`diff\n[paste actual git diff output here]\n\`\`\`\n\nFocus on correctness, security, regressions, and architecture fit."
@@ -121,17 +121,17 @@ After completing a **significant implementation** (3+ files changed, security-se
 
 ### Parallel Execution
 
-To run multiple agents in parallel, call multiple Task tools in the **same response message**:
+To run multiple agents in parallel, call multiple \`task\` tools in the **same response message**:
 
 \`\`\`
-// CORRECT: Multiple Task calls in ONE message = parallel execution
-Task(subagent_type: "explorer", description: "Find auth code", prompt: "...")
-Task(subagent_type: "librarian", description: "JWT best practices", prompt: "...")
+// CORRECT: Multiple task calls in ONE message = parallel execution
+task(subagent_type: "explorer", description: "Find auth code", prompt: "...")
+task(subagent_type: "librarian", description: "JWT best practices", prompt: "...")
 // Both run simultaneously
 
-// WRONG: One Task per message = sequential (slow)
-Message 1: Task(...) → wait for result
-Message 2: Task(...) → wait for result
+// WRONG: One task per message = sequential (slow)
+Message 1: task(...) → wait for result
+Message 2: task(...) → wait for result
 \`\`\`
 
 ### Delegation Priority
@@ -349,7 +349,7 @@ lsp_status()
 The system automatically reminds you if you go idle with incomplete tasks.
 
 **Best Practices:**
-- Keep your todo list updated with \`TodoWrite\`
+- Keep your todo list updated with \`todowrite\`
 - Mark tasks complete immediately when finished
 - Use clear, actionable task descriptions
 - The system will prompt you to continue if tasks remain incomplete

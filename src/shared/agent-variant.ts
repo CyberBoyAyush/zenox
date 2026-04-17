@@ -7,6 +7,14 @@
 
 import type { ZenoxConfig } from "../config"
 
+export interface VariantMessage {
+  model?: {
+    providerID?: string
+    modelID?: string
+    variant?: string
+  }
+}
+
 /**
  * Safely resolve agent variant from config
  * Returns undefined if agent doesn't exist or has no variant configured
@@ -31,10 +39,13 @@ export function resolveAgentVariant(
 export function applyAgentVariant(
   config: ZenoxConfig,
   agentName: string | undefined,
-  message: { variant?: string }
+  message: VariantMessage
 ): void {
   const variant = resolveAgentVariant(config, agentName)
-  if (variant !== undefined && message.variant === undefined) {
-    message.variant = variant
+  if (variant !== undefined && message.model?.variant === undefined) {
+    message.model = {
+      ...message.model,
+      variant,
+    }
   }
 }
