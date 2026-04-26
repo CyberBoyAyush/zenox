@@ -190,7 +190,7 @@ implementation examples. MUST BE USED when users ask to look up code in
 remote repositories, explain library internals, find usage examples in 
 open source, or understand how something works.`,
   mode: "subagent",
-  model: "anthropic/claude-sonnet-4-5",
+  model: "anthropic/claude-sonnet-4-6",
   color: "#8B5CF6",
   temperature: 0.1,
   tools: {

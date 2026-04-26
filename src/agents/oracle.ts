@@ -118,8 +118,8 @@ roadmaps, and strategic technical decisions. Also use for code review
 and self-review after completing significant implementations — it will 
 surface critical issues, security concerns, and regressions.`,
   mode: "subagent",
-  model: "openai/gpt-5.4",
-  variant: "high",
+  model: "openai/gpt-5.5",
+  variant: "medium",
   color: "#F59E0B",
   temperature: 0.1,
   tools: {
