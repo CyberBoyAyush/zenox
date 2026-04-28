@@ -13,6 +13,7 @@ export interface ParentModel {
 export interface BackgroundTask {
   id: string
   sessionID: string
+  parentSessionID: string
   agent: string
   description: string
   prompt: string
@@ -38,6 +39,7 @@ export interface CompletionNotification {
   message: string
   completedTasks: BackgroundTask[]
   runningCount: number
+  parentSessionID: string
   parentAgent?: string // Agent to return notification to (preserves mode)
   parentModel?: ParentModel // Model to return notification to (preserves model)
 }

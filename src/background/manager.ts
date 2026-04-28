@@ -18,6 +18,7 @@ import type { TaskToastManager } from "../features/task-toast"
 
 export class BackgroundManager {
   private tasks = new Map<string, BackgroundTask>()
+  private detachedParentSessions = new Set<string>()
   private mainSessionID: string | undefined
   private toastManager: TaskToastManager | undefined
 
@@ -41,6 +42,10 @@ export class BackgroundManager {
     client: OpencodeClient,
     input: LaunchInput
   ): Promise<BackgroundTask> {
+    if (!input.parentSessionID) {
+      throw new Error("Background task launch requires parentSessionID")
+    }
+
     // Store main session ID for notifications
     if (!this.mainSessionID) {
       this.mainSessionID = input.parentSessionID
@@ -65,6 +70,7 @@ export class BackgroundManager {
     const task: BackgroundTask = {
       id: this.generateTaskId(),
       sessionID,
+      parentSessionID: input.parentSessionID,
       agent: input.agent,
       description: input.description,
       prompt: input.prompt,
@@ -239,19 +245,32 @@ export class BackgroundManager {
     task.status = "completed"
     task.completedAt = new Date()
 
+    // Parent session is gone - silently keep lifecycle local and cleanup task
+    if (this.detachedParentSessions.has(task.parentSessionID)) {
+      this.tasks.delete(task.id)
+      return null
+    }
+
     // Show completion toast
     if (this.toastManager) {
       this.toastManager.showCompletionToast(task.id).catch(() => {})
     }
 
-    // Generate notification
-    return this.getCompletionStatus()
+    // Generate notification for the task's parent session only
+    return this.getCompletionStatusForSession(task.parentSessionID)
   }
 
-  getCompletionStatus(): CompletionNotification {
-    const allTasks = [...this.tasks.values()]
-    const runningTasks = allTasks.filter((t) => t.status === "running")
-    const completedTasks = allTasks.filter(
+  getCompletionStatusForSession(parentSessionID: string): CompletionNotification | null {
+    const sessionTasks = [...this.tasks.values()].filter(
+      (t) => t.parentSessionID === parentSessionID
+    )
+
+    if (sessionTasks.length === 0) {
+      return null
+    }
+
+    const runningTasks = sessionTasks.filter((t) => t.status === "running")
+    const completedTasks = sessionTasks.filter(
       (t) => t.status === "completed" || t.status === "failed"
     )
 
@@ -289,6 +308,7 @@ ${runningTasks.length} task(s) still running. Continue working.
       message,
       completedTasks,
       runningCount: runningTasks.length,
+      parentSessionID,
       parentAgent,
       parentModel,
     }
@@ -305,6 +325,16 @@ ${runningTasks.length} task(s) still running. Continue working.
   clearCompleted(): void {
     for (const [id, task] of this.tasks) {
       if (task.status !== "running") {
+        this.tasks.delete(id)
+      }
+    }
+  }
+
+  detachParentSession(sessionID: string): void {
+    this.detachedParentSessions.add(sessionID)
+
+    for (const [id, task] of this.tasks) {
+      if (task.parentSessionID === sessionID && task.status !== "running") {
         this.tasks.delete(id)
       }
     }
