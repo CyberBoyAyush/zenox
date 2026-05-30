@@ -101,7 +101,7 @@ export async function runUpdate(): Promise<void> {
     log.step(pc.dim(`Plugin is unpinned — OpenCode will pull the latest on restart.`))
   }
 
-  // 4. Clear the OpenCode bun cache so the next OC restart downloads the new version
+  // 4. Clear the OpenCode plugin cache so the next OC restart downloads the new version
   s.start("Clearing OpenCode plugin cache…")
   const cleared = await invalidatePackageCache()
   s.stop(

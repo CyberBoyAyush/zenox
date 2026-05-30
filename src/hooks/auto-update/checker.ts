@@ -1,5 +1,6 @@
-import { NPM_REGISTRY_URL, BUN_CACHE_DIR, PACKAGE_NAME } from "./constants"
-import { readdir } from "node:fs/promises"
+import { OC_CACHE_DIR, NPM_REGISTRY_URL, PACKAGE_NAME } from "./constants"
+import { readdir, readFile } from "node:fs/promises"
+import { join } from "node:path"
 import { readPackageVersion } from "../../skills/sync"
 
 interface NpmPackageInfo {
@@ -23,46 +24,65 @@ export async function getLatestVersion(): Promise<string | null> {
   }
 }
 
+/**
+ * Read the installed version from the OpenCode plugin cache.
+ * OC stores plugins at ~/.cache/opencode/packages/zenox@<spec>/node_modules/zenox/package.json
+ * We prefer the @latest entry, then any versioned entry, then readPackageVersion() fallback.
+ */
 export async function getCachedVersion(): Promise<string | null> {
   try {
-    const entries = await readdir(BUN_CACHE_DIR)
-    return extractVersionFromEntries(entries)
+    const entries = await readdir(OC_CACHE_DIR)
+    // Prefer the @latest entry — that's what unpinned users load
+    const preferred = entries.find((e) => e === `${PACKAGE_NAME}@latest`)
+    // Fall back to the highest-versioned pinned entry
+    const fallback = entries
+      .filter((e) => e.startsWith(`${PACKAGE_NAME}@`) && e !== `${PACKAGE_NAME}@latest`)
+      .sort()
+      .at(-1)
+
+    for (const entry of [preferred, fallback]) {
+      if (!entry) continue
+      const pkgPath = join(OC_CACHE_DIR, entry, "node_modules", PACKAGE_NAME, "package.json")
+      try {
+        const raw = await readFile(pkgPath, "utf-8")
+        const pkg = JSON.parse(raw) as { version?: string }
+        if (pkg.version) return pkg.version
+      } catch {
+        /* entry exists but package.json unreadable — keep trying */
+      }
+    }
+    return null
   } catch {
     return null
   }
 }
 
-export function findPluginEntry(entries: string[]): string | null {
-  // Match entries like "zenox@1.0.0@@@1" (without version pinning)
-  const unpinnedPattern = new RegExp(`^${PACKAGE_NAME}@[^@]+@@@\\d+$`)
-  return entries.find((e) => unpinnedPattern.test(e)) ?? null
-}
-
-export function isVersionPinned(entries: string[]): boolean {
-  // Pinned versions have double @@ before version: zenox@@1.0.0@@@1
-  const pinnedPattern = new RegExp(`^${PACKAGE_NAME}@@`)
-  return entries.some((e) => pinnedPattern.test(e))
-}
-
-function extractVersionFromEntries(entries: string[]): string | null {
-  const pluginEntry = findPluginEntry(entries)
-  if (!pluginEntry) return null
-
-  // Extract version from format: zenox@1.0.0@@@1
-  const match = pluginEntry.match(new RegExp(`^${PACKAGE_NAME}@([^@]+)@@@`))
-  return match?.[1] ?? null
-}
-
-/** Returns the running version regardless of install method. */
-export async function getCurrentVersion(): Promise<string | null> {
+/**
+ * Returns true when the currently loaded plugin entry in OC cache is a pinned version
+ * (e.g. zenox@1.7.2) rather than zenox@latest.
+ * Pinned entries must be updated via `zenox update`; cache-clear alone won't upgrade them.
+ */
+export async function isCachePinned(): Promise<boolean> {
   try {
-    const entries = await readdir(BUN_CACHE_DIR)
-    if (isVersionPinned(entries)) return readPackageVersion() || null
-    const cached = extractVersionFromEntries(entries)
-    if (cached) return cached
+    const entries = await readdir(OC_CACHE_DIR)
+    // If @latest exists, the user is on unpinned — not pinned
+    if (entries.includes(`${PACKAGE_NAME}@latest`)) return false
+    // If only versioned entries exist, it's pinned
+    return entries.some(
+      (e) => e.startsWith(`${PACKAGE_NAME}@`) && e !== `${PACKAGE_NAME}@latest`
+    )
   } catch {
-    /* Bun cache unavailable — fall through */
+    return false
   }
+}
+
+/**
+ * Returns the running version of zenox regardless of install method.
+ * Priority: OC cache package.json → readPackageVersion() (import.meta.url walk-up)
+ */
+export async function getCurrentVersion(): Promise<string | null> {
+  const cached = await getCachedVersion()
+  if (cached) return cached
   const pkg = readPackageVersion()
   return pkg !== "0.0.0" ? pkg : null
 }
@@ -82,15 +102,5 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     }
   } catch {
     return null
-  }
-}
-
-/** True when the bun cache entry is version-pinned (zenox@@x.y.z@@@n). */
-export async function isCachePinned(): Promise<boolean> {
-  try {
-    const entries = await readdir(BUN_CACHE_DIR)
-    return isVersionPinned(entries)
-  } catch {
-    return false
   }
 }

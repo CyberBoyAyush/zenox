@@ -129,5 +129,5 @@ async function showVersionToast(ctx: PluginInput, version: string) {
 
 export { checkForUpdate, getCurrentVersion, getCachedVersion, getLatestVersion } from "./checker"
 export { invalidatePackageCache } from "./cache"
-export { PACKAGE_NAME, NPM_REGISTRY_URL, BUN_CACHE_DIR } from "./constants"
+export { PACKAGE_NAME, NPM_REGISTRY_URL, OC_CACHE_DIR } from "./constants"
 export { readState, writeState } from "./state"
