@@ -3,6 +3,7 @@ import type { Event } from "@opencode-ai/sdk"
 import { checkForUpdate, getCachedVersion } from "./checker"
 import { invalidatePackageCache } from "./cache"
 import { PACKAGE_NAME, TOAST_DURATION } from "./constants"
+import { readPackageVersion } from "../../skills/sync"
 
 interface AutoUpdateHookOptions {
   showStartupToast?: boolean
@@ -33,7 +34,7 @@ export function createAutoUpdateHook(
 
         // Show startup toast with current version
         if (showStartupToast) {
-          const version = updateInfo?.currentVersion ?? cachedVersion ?? "unknown"
+          const version = updateInfo?.currentVersion ?? cachedVersion ?? readPackageVersion() ?? "unknown"
           await showVersionToast(ctx, version)
         }
 

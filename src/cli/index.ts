@@ -17,7 +17,7 @@ const program = new Command()
 program
   .name("zenox")
   .description("Zenox - OpenCode plugin for intelligent agent orchestration")
-  .version("1.0.0")
+  .version(readPackageVersion())
 
 program
   .command("install")
