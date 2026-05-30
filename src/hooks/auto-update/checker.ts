@@ -1,5 +1,6 @@
 import { NPM_REGISTRY_URL, BUN_CACHE_DIR, PACKAGE_NAME } from "./constants"
 import { readdir } from "node:fs/promises"
+import { readPackageVersion } from "../../skills/sync"
 
 interface NpmPackageInfo {
   version: string
@@ -52,14 +53,23 @@ function extractVersionFromEntries(entries: string[]): string | null {
   return match?.[1] ?? null
 }
 
-export async function checkForUpdate(): Promise<UpdateInfo | null> {
+/** Returns the running version regardless of install method. */
+export async function getCurrentVersion(): Promise<string | null> {
   try {
     const entries = await readdir(BUN_CACHE_DIR)
+    if (isVersionPinned(entries)) return readPackageVersion() || null
+    const cached = extractVersionFromEntries(entries)
+    if (cached) return cached
+  } catch {
+    /* Bun cache unavailable — fall through */
+  }
+  const pkg = readPackageVersion()
+  return pkg !== "0.0.0" ? pkg : null
+}
 
-    // Skip if version is pinned (user explicitly locked version)
-    if (isVersionPinned(entries)) return null
-
-    const currentVersion = extractVersionFromEntries(entries)
+export async function checkForUpdate(): Promise<UpdateInfo | null> {
+  try {
+    const currentVersion = await getCurrentVersion()
     if (!currentVersion) return null
 
     const latestVersion = await getLatestVersion()
@@ -72,5 +82,15 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
     }
   } catch {
     return null
+  }
+}
+
+/** True when the bun cache entry is version-pinned (zenox@@x.y.z@@@n). */
+export async function isCachePinned(): Promise<boolean> {
+  try {
+    const entries = await readdir(BUN_CACHE_DIR)
+    return isVersionPinned(entries)
+  } catch {
+    return false
   }
 }

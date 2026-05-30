@@ -3,6 +3,7 @@ import { Command } from "commander"
 import { runInstall } from "./install"
 import { runConfig } from "./config"
 import { runMcp } from "./mcp"
+import { runUpdate } from "./update"
 import {
   syncBundledSkills,
   readPackageVersion,
@@ -55,6 +56,18 @@ program
   .action(async () => {
     try {
       await runMcp()
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : "Unknown error")
+      process.exit(1)
+    }
+  })
+
+program
+  .command("update")
+  .description("Update zenox to the latest version (clears OpenCode plugin cache)")
+  .action(async () => {
+    try {
+      await runUpdate()
     } catch (err) {
       console.error(err instanceof Error ? err.message : "Unknown error")
       process.exit(1)
