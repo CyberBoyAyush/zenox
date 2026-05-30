@@ -18,11 +18,11 @@
         },
         "librarian": {
           "$ref": "#/$defs/agentOverride",
-          "description": "Open-source research agent (default: anthropic/claude-sonnet-4-5)"
+          "description": "Open-source research agent (default: anthropic/claude-sonnet-4-6)"
         },
         "oracle": {
           "$ref": "#/$defs/agentOverride",
-          "description": "Strategic technical advisor (default: openai/gpt-5.2-high)"
+          "description": "Strategic technical advisor (default: openai/gpt-5.5, variant medium)"
         },
         "ui-planner": {
           "$ref": "#/$defs/agentOverride",
@@ -48,6 +48,48 @@
         "enum": ["exa", "grep_app", "sequential-thinking"]
       },
       "uniqueItems": true
+    },
+    "disabled_skills": {
+      "type": "array",
+      "description": "List of bundled skills to NOT auto-install/sync (e.g. 'frontend-design', 'grill-me')",
+      "items": {
+        "type": "string",
+        "enum": ["frontend-design", "grill-me"]
+      },
+      "uniqueItems": true
+    },
+    "auto_update": {
+      "type": "object",
+      "description": "Auto-update behavior",
+      "properties": {
+        "show_startup_toast": {
+          "type": "boolean",
+          "description": "Show the startup version toast on session start (default: true)",
+          "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "background": {
+      "type": "object",
+      "description": "Background task concurrency limits (guards against runaway parallel fan-out)",
+      "properties": {
+        "max_concurrent": {
+          "type": "integer",
+          "description": "Max simultaneously running background tasks (default: 6)",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 6
+        },
+        "max_per_session": {
+          "type": "integer",
+          "description": "Max total background tasks a single session may spawn; lifetime circuit breaker (default: 50)",
+          "minimum": 1,
+          "maximum": 500,
+          "default": 50
+        }
+      },
+      "additionalProperties": false
     }
   },
   "$defs": {

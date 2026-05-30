@@ -157,6 +157,19 @@ Message 2: task(...) → wait for result
 
 ---
 
+## Skills
+
+You have access to on-demand **Skills** via the \`skill\` tool. Skills bundle focused, expert workflows that load only when needed (progressive disclosure). Check the \`<available_skills>\` list in the \`skill\` tool description for what's installed.
+
+| Skill | Load when |
+|-------|-----------|
+| \`frontend-design\` | Building/styling any UI — components, pages, landing pages, dashboards. Load it (or delegate to \`ui-planner\`, which uses it) before writing visual code. |
+| \`grill-me\` | The user wants a plan or design stress-tested before committing. |
+
+**Usage**: \`skill({ name: "frontend-design" })\`. Load a skill once at the start of a matching task and follow its guidance. Skills auto-install with Zenox and stay in sync as it updates.
+
+---
+
 ## Project Guidelines — Living Documentation
 
 **IMPORTANT**: You have \`save_project_guideline\` to keep AGENTS.md and CLAUDE.md updated with real decisions and conventions. This tool is smart — it reads existing files, checks for duplicates, adds dates, and only writes genuinely new information.
@@ -212,6 +225,14 @@ For **independent research tasks** that benefit from parallelism, use background
 2. **Continue**: Keep working while background agents search
 3. **Notify**: You'll be notified when ALL background tasks complete
 4. **Retrieve**: Use \`background_output\` to get each result
+
+### Concurrency Limits (IMPORTANT)
+
+Background agents consume the user's usage budget. **Be deliberate, not greedy.**
+
+- Launch **3–5 agents per batch**; the hard cap is a small number (default 6 running at once).
+- If \`background_task\` returns a limit-reached message, **stop launching**, wait for running tasks, and call \`background_output\` to collect results before firing more.
+- Never fan out dozens of agents "just in case." Scope each batch to a concrete question. A session also has a total spawn cap to stop runaway loops.
 
 ### Usage
 
@@ -362,12 +383,46 @@ The system automatically reminds you if you go idle with incomplete tasks.
 
 `
 
-export function getOrchestrationPrompt(agent: "build" | "plan" | string | undefined): string | undefined {
+/**
+ * Human-readable label for each delegatable subagent, used to warn the primary
+ * agent when one has been disabled by the user.
+ */
+const AGENT_LABELS: Record<string, string> = {
+  explorer: "Explorer",
+  librarian: "Librarian",
+  oracle: "Oracle",
+  "ui-planner": "UI Planner",
+}
+
+/**
+ * Build a concise note listing disabled agents so the primary agent does not
+ * try to delegate to a subagent the user turned off. Returns "" when none are
+ * disabled (keeping the prompt unchanged in the common case).
+ */
+function buildDisabledAgentsNote(disabledAgents: Set<string>): string {
+  const disabled = [...disabledAgents].filter((a) => a in AGENT_LABELS)
+  if (disabled.length === 0) return ""
+
+  const list = disabled.map((a) => `\`${a}\` (${AGENT_LABELS[a]})`).join(", ")
+  return `
+
+---
+
+## Disabled Agents
+
+The following subagents are **disabled** in this project and are NOT available: ${list}.
+Do not delegate to them or reference them — they will fail. Use the remaining agents (or handle the work directly) instead.
+`
+}
+
+export function getOrchestrationPrompt(
+  agent: "build" | "plan" | string | undefined,
+  disabledAgents: Set<string> = new Set()
+): string | undefined {
   switch (agent) {
     case "build":
-      return ORCHESTRATION_PROMPT
     case "plan":
-      return ORCHESTRATION_PROMPT
+      return ORCHESTRATION_PROMPT + buildDisabledAgentsNote(disabledAgents)
     default:
       return undefined
   }

@@ -65,6 +65,14 @@ For complex problems that require multi-step reasoning, use the \`sequential-thi
 
 This helps you break down complex problems systematically and avoid missing edge cases.
 
+## Grounding Your Analysis (architecture & debugging only)
+
+For architecture decisions, debugging, and refactoring tasks (NOT code review):
+- Use \`find_symbols\` to locate the exact definitions involved before reasoning about them, rather than assuming structure.
+- Use \`session_search\` to check whether a similar decision or bug was already resolved in a past session — reuse prior conclusions instead of re-deriving them.
+
+These tools are for grounding only. Do not use them in Code Review Mode (see below).
+
 ## Code Review Mode
 
 When invoked specifically for code review or self-review after an implementation, shift into review mode. Your goal is to surface what matters—not to catalog every imperfection.
@@ -130,6 +138,8 @@ surface critical issues, security concerns, and regressions.`,
     glob: true,
     grep: true,
     list: true,
+    find_symbols: true,
+    session_search: true,
     "sequential-thinking_*": true,
   },
   prompt: ORACLE_PROMPT,

@@ -19,13 +19,13 @@ export const AGENTS: AgentInfo[] = [
   {
     name: "librarian",
     displayName: "Librarian",
-    defaultModel: "anthropic/claude-sonnet-4-5",
+    defaultModel: "anthropic/claude-sonnet-4-6",
     description: "Open-source research agent",
   },
   {
     name: "oracle",
     displayName: "Oracle",
-    defaultModel: "openai/gpt-5.4",
+    defaultModel: "openai/gpt-5.5",
     description: "Strategic technical advisor",
   },
   {
@@ -38,8 +38,8 @@ export const AGENTS: AgentInfo[] = [
 
 export const DEFAULT_MODELS: Record<AgentName, string> = {
   explorer: "anthropic/claude-haiku-4-5",
-  librarian: "anthropic/claude-sonnet-4-5",
-  oracle: "openai/gpt-5.4",
+  librarian: "anthropic/claude-sonnet-4-6",
+  oracle: "openai/gpt-5.5",
   "ui-planner": "google/gemini-3-pro-high",
 }
 

@@ -23,7 +23,18 @@ import {
 } from "./model-picker"
 import { askConfigureMcps, pickMcpsToEnable } from "./mcp-picker"
 import { PACKAGE_NAME } from "./constants"
+import { syncBundledSkills, readPackageVersion } from "../skills"
 import type { InstallOptions } from "./types"
+
+/** Install/update bundled skills into the global skills dir. Never throws. */
+function installSkills(): { installed: string[]; updated: string[] } {
+  try {
+    const result = syncBundledSkills({ packageVersion: readPackageVersion() })
+    return { installed: result.installed, updated: result.updated }
+  } catch {
+    return { installed: [], updated: [] }
+  }
+}
 
 export async function runInstall(options: InstallOptions = {}): Promise<void> {
   const { noTui = false, configPath: customConfigPath } = options
@@ -181,6 +192,17 @@ async function runInteractive(cwd: string, customConfigPath?: string): Promise<v
     }
   }
 
+  // Install/update bundled skills into the global skills dir
+  const skillSpinner = p.spinner()
+  skillSpinner.start("Installing skills")
+  const { installed, updated } = installSkills()
+  const changed = installed.length + updated.length
+  skillSpinner.stop(
+    changed > 0
+      ? `Installed ${changed} skill(s): ${[...installed, ...updated].join(", ")}`
+      : "Skills already up to date"
+  )
+
   p.outro(pc.green(`${PACKAGE_NAME} installed successfully!`))
 }
 
@@ -193,20 +215,27 @@ async function runNonInteractive(cwd: string, customConfigPath?: string): Promis
     console.log(`Creating opencode.json with ${PACKAGE_NAME}...`)
     const configPath = getDefaultConfigPath(cwd)
     await createDefaultConfig(configPath)
+    installSkills()
     console.log(`Created opencode.json with ${PACKAGE_NAME}`)
     console.log("Using default models (run 'bunx zenox config' to customize)")
     return
   }
 
-  // Check if already installed
+  // Add the plugin if not already present (idempotent)
   const { config } = await readConfig(configFile.path)
   if (isPluginInstalled(config)) {
     console.log(`${PACKAGE_NAME} is already installed`)
-    return
+  } else {
+    console.log(`Adding ${PACKAGE_NAME} to ${configFile.path}...`)
+    await installPlugin(configFile.path)
+    console.log(`${PACKAGE_NAME} installed successfully!`)
+    console.log("Using default models (run 'bunx zenox config' to customize)")
   }
 
-  console.log(`Adding ${PACKAGE_NAME} to ${configFile.path}...`)
-  await installPlugin(configFile.path)
-  console.log(`${PACKAGE_NAME} installed successfully!`)
-  console.log("Using default models (run 'bunx zenox config' to customize)")
+  // Always sync skills - keeps an existing install's skills up to date too.
+  const { installed, updated } = installSkills()
+  const changed = installed.length + updated.length
+  if (changed > 0) {
+    console.log(`Installed/updated ${changed} skill(s): ${[...installed, ...updated].join(", ")}`)
+  }
 }

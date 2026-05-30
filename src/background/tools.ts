@@ -9,7 +9,7 @@
 
 import { tool, type ToolDefinition } from "@opencode-ai/plugin"
 import type { OpencodeClient } from "@opencode-ai/sdk"
-import type { BackgroundManager } from "./manager"
+import { BackgroundManager, BackgroundLimitError } from "./manager"
 import { getSessionModel } from "../orchestration/session-agent-tracker"
 
 export type BackgroundTools = {
@@ -43,6 +43,8 @@ Use for independent research tasks that benefit from parallelism.`,
         // Get current model from session context
         const parentModel = getSessionModel(context.sessionID)
 
+        // launch() enforces concurrency/circuit-breaker limits atomically and
+        // throws BackgroundLimitError when a limit is hit.
         const task = await manager.launch(client, {
           agent: args.agent,
           description: args.description,
@@ -61,6 +63,10 @@ Use for independent research tasks that benefit from parallelism.`,
 
 Continue working. You will be notified when all background tasks complete.`
       } catch (err) {
+        // Limit rejections return the friendly guidance message directly.
+        if (err instanceof BackgroundLimitError) {
+          return err.message
+        }
         const errorMsg = err instanceof Error ? err.message : "Unknown error"
         return `Failed to launch background task: ${errorMsg}`
       }

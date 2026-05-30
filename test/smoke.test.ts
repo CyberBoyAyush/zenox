@@ -113,6 +113,9 @@ describe("zenox smoke", () => {
     expect(plugin.tool?.session_list).toBeDefined()
     expect(plugin.tool?.find_symbols).toBeDefined()
 
+    // dispose hook is registered for clean teardown
+    expect(typeof plugin.dispose).toBe("function")
+
     const config: {
       agent?: Record<string, unknown>
       mcp?: Record<string, unknown>
@@ -182,6 +185,9 @@ describe("zenox smoke", () => {
 
     expect(systemOutput.system).toHaveLength(1)
     expect(systemOutput.system[0]).toContain("## Sub-Agent Delegation")
+
+    // Teardown should not throw
+    await plugin.dispose?.()
   })
 
   test("does not inject orchestration for non-build agents", async () => {

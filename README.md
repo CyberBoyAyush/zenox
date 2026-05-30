@@ -20,14 +20,15 @@ Zenox supercharges [OpenCode](https://opencode.ai) with specialized AI agents th
 ## Features
 
 - **4 Specialized Agents** — Explorer, Librarian, Oracle, UI Planner
-- **Background Tasks** — Fire multiple agents in parallel
+- **Bundled Skills** — Auto-installs `frontend-design` & `grill-me`, auto-updated with Zenox
+- **Background Tasks** — Fire multiple agents in parallel (with safe concurrency limits)
 - **Thinking Mode Variants** — Configure thinking levels (high, xhigh, max) per agent
 - **Keyword Triggers** — `ultrawork`, `deep research`, `explore codebase`
 - **Session History** — Query past sessions to learn from previous work
 - **Code Intelligence** — Search symbols via LSP
 - **Project Guidelines Auto-Update** — Automatically keeps AGENTS.md and CLAUDE.md up-to-date
 - **Todo Continuation** — Auto-reminds when tasks are incomplete
-- **Auto-Updates** — Toast notification when new version available
+- **Auto-Updates** — Plugin and bundled skills update automatically; toast on new version
 
 ## Why Zenox?
 
@@ -53,8 +54,8 @@ That's it. Restart OpenCode and the agents are ready.
 | Agent | What it does | Default Model |
 |-------|-------------|---------------|
 | **Explorer** | Codebase grep, file discovery, pattern matching | `claude-haiku-4-5` |
-| **Librarian** | Library research, docs lookup, GitHub examples | `claude-sonnet-4-5` |
-| **Oracle** | Architecture decisions, debugging strategy, code review | `gpt-5.2` |
+| **Librarian** | Library research, docs lookup, GitHub examples | `claude-sonnet-4-6` |
+| **Oracle** | Architecture decisions, debugging strategy, code review | `gpt-5.5` (variant medium) |
 | **UI Planner** | Frontend design, CSS, animations, visual polish | `gemini-3-pro-high` |
 
 ### How delegation works
@@ -104,6 +105,42 @@ You: "explore codebase for payment logic"
 ```
 
 You'll see a toast notification when these modes activate.
+
+## Skills
+
+Zenox bundles [OpenCode Agent Skills](https://opencode.ai/docs/skills) — focused expert workflows the agent loads on demand via the native `skill` tool.
+
+| Skill | What it does |
+|-------|--------------|
+| **frontend-design** | Anthropic's official design philosophy for distinctive, production-grade UI that avoids generic "AI slop" aesthetics. Used by UI Planner. |
+| **grill-me** | Stress-tests a plan/design by interviewing you relentlessly, one decision at a time. |
+
+### How skills are installed — fully automatic
+
+You **never** need a manual step to get skills:
+
+- **On `zenox install`** — skills are copied to `~/.config/opencode/skills/`.
+- **On every startup** — when Zenox auto-updates (or any time the plugin loads), it re-syncs the bundled skills so they always match the installed Zenox version. **No `zenox install` re-run needed.**
+
+OpenCode auto-discovers `SKILL.md` files in that directory and exposes them to agents. The agent loads one with `skill({ name: "frontend-design" })`.
+
+### Your own skills are never touched
+
+Zenox only manages skill folders it created itself (tracked via a `.zenox.json` manifest):
+
+- A skill you installed yourself is **never modified or removed**.
+- If you already have a skill named `frontend-design` or `grill-me`, Zenox **leaves it alone** — it will not override it.
+- If you edit a Zenox-managed skill, your edits are **preserved** (Zenox detects the change and skips it).
+
+### Manage skills
+
+```bash
+bunx zenox skills          # Install/update bundled skills
+bunx zenox skills list     # List bundled skills
+bunx zenox skills update   # Same as install (re-sync)
+```
+
+Disable bundled skills entirely in `zenox.json` (see [Configuration](#disable-agents-mcps-or-skills)).
 
 ## Background Tasks
 
@@ -218,8 +255,8 @@ Config saves to `~/.config/opencode/zenox.json`:
 ```json
 {
   "agents": {
-    "explorer": { "model": "anthropic/claude-sonnet-4.5" },
-    "oracle": { "model": "openai/gpt-5.2" }
+    "explorer": { "model": "anthropic/claude-sonnet-4-6" },
+    "oracle": { "model": "openai/gpt-5.5" }
   }
 }
 ```
@@ -236,7 +273,7 @@ Configure thinking/reasoning levels for models that support extended thinking (l
       "variant": "high"
     },
     "ui-planner": { 
-      "model": "openai/gpt-5.2-codex",
+      "model": "openai/gpt-5.5-codex",
       "variant": "xhigh"
     }
   }
@@ -252,14 +289,36 @@ Available variants (model-dependent):
 
 Variants are applied safely — if an agent doesn't exist or the model doesn't support the variant, it gracefully falls back.
 
-### Disable Agents or MCPs
+<a id="disable-agents-mcps-or-skills"></a>
+### Disable Agents, MCPs, or Skills
 
 ```json
 {
   "disabled_agents": ["ui-planner"],
-  "disabled_mcps": ["grep_app"]
+  "disabled_mcps": ["grep_app"],
+  "disabled_skills": ["frontend-design", "grill-me"]
 }
 ```
+
+A skill listed in `disabled_skills` is never installed or synced. If it was previously installed by Zenox, it is left in place (Zenox won't auto-remove your files) — delete the folder manually if you want it gone.
+
+### Background Task Limits
+
+Control how many background agents can run at once (guards against runaway fan-out that burns through your usage):
+
+```json
+{
+  "background": {
+    "max_concurrent": 6,
+    "max_per_session": 50
+  }
+}
+```
+
+- `max_concurrent` — max agents running simultaneously (default `6`)
+- `max_per_session` — lifetime cap per session, a circuit breaker for runaway loops (default `50`)
+
+When a limit is hit, the next `background_task` is rejected with a message telling the agent to wait and collect results — running tasks are never interrupted, no matter how long they take.
 
 ## Included MCP Servers
 
@@ -274,9 +333,12 @@ Zenox auto-loads these tools for agents to use:
 ## CLI
 
 ```bash
-bunx zenox install          # Add to opencode.json + configure models
+bunx zenox install          # Add to opencode.json + configure models + install skills
 bunx zenox install --no-tui # Non-interactive (uses defaults)
 bunx zenox config           # Reconfigure models anytime
+bunx zenox mcp              # Enable/disable MCP servers
+bunx zenox skills           # Install/update bundled skills
+bunx zenox skills list      # List bundled skills
 bunx zenox --help           # Show all commands
 ```
 
@@ -287,6 +349,8 @@ Zenox checks for updates on startup. When a new version drops:
 1. You see a toast notification
 2. Bun cache is invalidated
 3. Restart to get the update
+
+When the new version loads, **bundled skills are re-synced automatically** — you don't need to run `zenox install` again to get updated skills.
 
 Pin a version to disable: `"zenox@1.2.1"` in your plugins array.
 

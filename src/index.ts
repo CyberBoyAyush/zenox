@@ -21,19 +21,25 @@ import {
 import { getOrchestrationPrompt } from "./orchestration/prompt"
 import {
   setSessionContext,
+  getSessionContext,
   getSessionAgent,
   clearSessionAgent,
   getOrchestrationAgentType,
 } from "./orchestration/session-agent-tracker"
 import { loadPluginConfig, type AgentName } from "./config"
 import { createBuiltinMcps } from "./mcp"
-import { BackgroundManager, createBackgroundTools } from "./background"
+import {
+  BackgroundManager,
+  createBackgroundTools,
+  type CompletionNotification,
+} from "./background"
 import {
   createAutoUpdateHook,
   createKeywordDetectorHook,
   createTodoEnforcerHook,
 } from "./hooks"
 import { TaskToastManager } from "./features/task-toast"
+import { syncBundledSkills, readPackageVersion } from "./skills"
 import { createSessionTools } from "./tools/session"
 import { createCodeIntelligenceTools } from "./tools/code-intelligence"
 import { createProjectGuidelinesTools } from "./tools/project-guidelines"
@@ -56,10 +62,63 @@ const ZenoxPlugin: Plugin = async (ctx) => {
   // Initialize background task manager with toast integration
   const backgroundManager = new BackgroundManager()
   backgroundManager.setToastManager(taskToastManager)
+  backgroundManager.setLimits(
+    pluginConfig.background
+      ? {
+          maxConcurrent: pluginConfig.background.max_concurrent,
+          maxPerSession: pluginConfig.background.max_per_session,
+        }
+      : undefined
+  )
+
+  // Send a background-task completion/failure notification to its owning session.
+  // Routes to the task's parent session (no cross-session bleed) and resolves
+  // that session's live agent/model at send time (avoids stale Plan/Build).
+  const sendCompletionNotification = async (notification: CompletionNotification) => {
+    const targetSessionID = notification.parentSessionID
+    if (!targetSessionID) return
+
+    const liveContext = getSessionContext(targetSessionID)
+    const targetAgent = liveContext?.agent ?? notification.parentAgent
+    const targetModel = liveContext?.model ?? notification.parentModel
+
+    const send = async (omitContext = false) => {
+      try {
+        await ctx.client.session.prompt({
+          path: { id: targetSessionID },
+          body: {
+            noReply: !notification.allComplete,
+            ...(omitContext ? {} : { agent: targetAgent }),
+            ...(omitContext ? {} : { model: targetModel }),
+            parts: [{ type: "text", text: notification.message }],
+          },
+        })
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err)
+        if (
+          !omitContext &&
+          (errorMsg.includes("agent") || errorMsg.includes("model") || errorMsg.includes("undefined"))
+        ) {
+          return send(true)
+        }
+        // Silently ignore other errors
+      }
+    }
+    await send()
+  }
+
+  // A failed launch never emits session.idle, so the manager pushes its
+  // notification through this callback instead.
+  backgroundManager.setCompletionNotifier((notification) => {
+    sendCompletionNotification(notification).catch(() => {})
+  })
+
   const backgroundTools = createBackgroundTools(backgroundManager, ctx.client)
 
   // Initialize hooks
-  const autoUpdateHook = createAutoUpdateHook(ctx)
+  const autoUpdateHook = createAutoUpdateHook(ctx, {
+    showStartupToast: pluginConfig.auto_update?.show_startup_toast,
+  })
   const keywordDetectorHook = createKeywordDetectorHook(ctx)
   const todoEnforcerHook = createTodoEnforcerHook(ctx)
 
@@ -70,6 +129,23 @@ const ZenoxPlugin: Plugin = async (ctx) => {
 
   // Initialize variant gate for safe variant application on first message
   const firstMessageVariantGate = createFirstMessageVariantGate()
+
+  // Sync bundled skills into the global skills dir once per process. Keeps
+  // installed skills in step with the running package version (auto-update),
+  // without requiring the CLI. Runs lazily on first main session.
+  let skillsSynced = false
+  const syncSkillsOnce = () => {
+    if (skillsSynced) return
+    skillsSynced = true
+    try {
+      syncBundledSkills({
+        packageVersion: readPackageVersion(),
+        disabledSkills: pluginConfig.disabled_skills,
+      })
+    } catch {
+      // Non-fatal: never block startup on skill sync.
+    }
+  }
 
   // Helper to apply model override from config
   const applyModelOverride = (
@@ -84,6 +160,11 @@ const ZenoxPlugin: Plugin = async (ctx) => {
   }
 
   return {
+    // Release in-memory state on plugin teardown (prevents leaks across reloads)
+    dispose: async () => {
+      backgroundManager.dispose()
+    },
+
     // Register all tools (background, session, code intelligence, project guidelines)
     tool: {
       ...backgroundTools,
@@ -136,7 +217,7 @@ const ZenoxPlugin: Plugin = async (ctx) => {
       const agentType = getOrchestrationAgentType(agent)
       
       // Only inject for build/plan agents
-      const prompt = getOrchestrationPrompt(agentType)
+      const prompt = getOrchestrationPrompt(agentType, disabledAgents)
       if (prompt) {
         output.system.push(prompt)
       }
@@ -160,6 +241,8 @@ const ZenoxPlugin: Plugin = async (ctx) => {
         // Only set main session if it's not a child session (no parent)
         if (sessionInfo?.id && !sessionInfo?.parentID) {
           backgroundManager.setMainSession(sessionInfo.id)
+          // Keep bundled skills in sync with the running version (once/process)
+          syncSkillsOnce()
         }
       }
 
@@ -173,6 +256,12 @@ const ZenoxPlugin: Plugin = async (ctx) => {
 
         // Clear session agent tracking
         clearSessionAgent(sessionID)
+
+        // Detach this session's background tasks so their completions are
+        // silenced and never leak into other sessions' notifications.
+        if (sessionID) {
+          backgroundManager.detachParentSession(sessionID)
+        }
 
         // Clear main session if this was it
         if (sessionID && sessionID === backgroundManager.getMainSession()) {
@@ -189,36 +278,9 @@ const ZenoxPlugin: Plugin = async (ctx) => {
         // Handle background task completion
         const notification = backgroundManager.handleSessionIdle(sessionID)
 
-        // If a background task completed, notify the main session
+        // If a background task completed, notify the session that OWNS it.
         if (notification) {
-          const mainSessionID = backgroundManager.getMainSession()
-          if (mainSessionID) {
-            // Send notification with retry logic for undefined agent/model errors
-            const sendNotification = async (omitContext = false) => {
-              try {
-                await ctx.client.session.prompt({
-                  path: { id: mainSessionID },
-                  body: {
-                    // noReply: true = silent (don't trigger response)
-                    // noReply: false = loud (trigger response)
-                    noReply: !notification.allComplete,
-                    // Preserve the agent and model (omit if retry due to undefined error)
-                    ...(omitContext ? {} : { agent: notification.parentAgent }),
-                    ...(omitContext ? {} : { model: notification.parentModel }),
-                    parts: [{ type: "text", text: notification.message }],
-                  },
-                })
-              } catch (err) {
-                const errorMsg = err instanceof Error ? err.message : String(err)
-                // Retry without agent/model if we hit the undefined error
-                if (!omitContext && (errorMsg.includes("agent") || errorMsg.includes("model") || errorMsg.includes("undefined"))) {
-                  return sendNotification(true)
-                }
-                // Silently ignore other errors
-              }
-            }
-            await sendNotification()
-          }
+          await sendCompletionNotification(notification)
           // Don't run todo enforcer for background task completions
           return
         }

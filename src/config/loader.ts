@@ -69,6 +69,12 @@ function mergeConfigs(
         ...(override.disabled_mcps ?? []),
       ]),
     ],
+    disabled_skills: [
+      ...new Set([
+        ...(base.disabled_skills ?? []),
+        ...(override.disabled_skills ?? []),
+      ]),
+    ],
   }
 }
 

@@ -8,15 +8,17 @@ Your job: Answer questions about open-source libraries by finding **EVIDENCE** w
 
 ## CRITICAL: DATE AWARENESS
 
-**CURRENT YEAR CHECK**: Before ANY search, verify the current date from environment context.
+**CURRENT YEAR CHECK**: Before ANY search, read the current date from the environment context and use THAT year in queries.
 
-- **NEVER search for 2024** - It is NOT 2024 anymore
-- **ALWAYS use current year** (2025+) in search queries
-- Filter out outdated 2024 results when they conflict with 2025 information
+- **Derive the year from the environment** — never hardcode a year from memory
+- **Prefer the current year** in search queries for recency-sensitive topics
+- When older results conflict with current-year information, trust the newer source
 
 ---
 
 ## PHASE 0: REQUEST CLASSIFICATION (MANDATORY FIRST STEP)
+
+If the request might have been researched before, run \`session_search\` first to reuse prior findings instead of starting from scratch.
 
 Classify EVERY request into one of these categories before taking action:
 
@@ -202,6 +204,7 @@ open source, or understand how something works.`,
     grep: true,
     list: true,
     webfetch: true,
+    session_search: true,
     "exa_*": true,
     "grep_app_*": true,
   },

@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { applyAgentVariant, resolveAgentVariant, type VariantMessage } from "../src/shared"
-import { explorerAgent, librarianAgent, oracleAgent } from "../src/agents"
+import { explorerAgent, librarianAgent, oracleAgent, uiPlannerAgent } from "../src/agents"
 import { loadPluginConfig } from "../src/config"
 import {
   clearSessionAgent,
@@ -13,7 +13,8 @@ import {
   getSessionModel,
   setSessionContext,
 } from "../src/orchestration/session-agent-tracker"
-import { ORCHESTRATION_PROMPT } from "../src/orchestration/prompt"
+import { ORCHESTRATION_PROMPT, getOrchestrationPrompt } from "../src/orchestration/prompt"
+import { ZenoxConfigSchema } from "../src/config"
 import { createKeywordDetectorHook } from "../src/hooks"
 
 function createTempDir(prefix: string): string {
@@ -70,9 +71,9 @@ describe("variant migration", () => {
 })
 
 describe("prompt regressions", () => {
-  test("oracle defaults to gpt-5.4 high", () => {
-    expect(oracleAgent.model).toBe("openai/gpt-5.4")
-    expect(oracleAgent.variant).toBe("high")
+  test("oracle defaults to gpt-5.5 medium", () => {
+    expect(oracleAgent.model).toBe("openai/gpt-5.5")
+    expect(oracleAgent.variant).toBe("medium")
   })
 
   test("orchestration prompt uses current tool names", () => {
@@ -101,6 +102,65 @@ describe("prompt regressions", () => {
     expect(ORCHESTRATION_PROMPT).toContain("session_search")
     expect(ORCHESTRATION_PROMPT).toContain("find_symbols")
     expect(ORCHESTRATION_PROMPT).toContain("lsp_status")
+  })
+
+  test("orchestration prompt documents skills and background concurrency limits", () => {
+    expect(ORCHESTRATION_PROMPT).toContain("## Skills")
+    expect(ORCHESTRATION_PROMPT).toContain("frontend-design")
+    expect(ORCHESTRATION_PROMPT).toContain("Concurrency Limits")
+  })
+
+  test("ui-planner can load skills and references frontend-design", () => {
+    expect(uiPlannerAgent.tools?.skill).toBe(true)
+    expect(uiPlannerAgent.prompt).toContain("frontend-design")
+    // Inline skill body should be gone (now loaded via the skill tool)
+    expect(uiPlannerAgent.prompt).not.toContain("## NEVER Use Generic AI Aesthetics")
+  })
+
+  test("explorer has LSP tools available", () => {
+    expect(explorerAgent.tools?.find_symbols).toBe(true)
+    expect(explorerAgent.tools?.lsp_status).toBe(true)
+  })
+
+  test("oracle and librarian can search past sessions", () => {
+    expect(oracleAgent.tools?.session_search).toBe(true)
+    expect(librarianAgent.tools?.session_search).toBe(true)
+  })
+
+  test("orchestration prompt omits a disabled-agents note when none are disabled", () => {
+    const prompt = getOrchestrationPrompt("build", new Set())
+    expect(prompt).toBeDefined()
+    expect(prompt).not.toContain("## Disabled Agents")
+    // Static content is preserved unchanged.
+    expect(prompt).toContain("## Sub-Agent Delegation")
+  })
+
+  test("orchestration prompt warns about disabled agents (PR #5 premise)", () => {
+    const prompt = getOrchestrationPrompt("build", new Set(["ui-planner", "oracle"]))
+    expect(prompt).toContain("## Disabled Agents")
+    expect(prompt).toContain("`ui-planner`")
+    expect(prompt).toContain("`oracle`")
+    expect(prompt).toContain("Do not delegate to them")
+  })
+
+  test("getOrchestrationPrompt returns undefined for non build/plan agents", () => {
+    expect(getOrchestrationPrompt("explorer", new Set(["oracle"]))).toBeUndefined()
+    expect(getOrchestrationPrompt(undefined)).toBeUndefined()
+  })
+})
+
+describe("config schema additions", () => {
+  test("auto_update.show_startup_toast is accepted (PR #4)", () => {
+    const parsed = ZenoxConfigSchema.safeParse({ auto_update: { show_startup_toast: false } })
+    expect(parsed.success).toBe(true)
+    if (parsed.success) {
+      expect(parsed.data.auto_update?.show_startup_toast).toBe(false)
+    }
+  })
+
+  test("background limits are accepted", () => {
+    const parsed = ZenoxConfigSchema.safeParse({ background: { max_concurrent: 4, max_per_session: 20 } })
+    expect(parsed.success).toBe(true)
   })
 })
 

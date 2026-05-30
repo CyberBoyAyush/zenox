@@ -18,6 +18,8 @@ ULTRAWORK MODE ACTIVE - Maximum multi-agent coordination engaged.
 - Can I continue working while this runs? If yes → background_task
 - Do I need this answer RIGHT NOW to proceed? If no → background_task
 
+**Stay within limits**: launch focused batches of 3–5 background agents (hard cap ~6 running). If a launch is rejected, wait and collect results with background_output before firing more. Breadth comes from sequential batches, not from spawning everything at once.
+
 **Parallel research pattern**:
 \`\`\`
 // Fire research immediately
@@ -38,11 +40,12 @@ export const DEEP_RESEARCH_CONTEXT = `<deep-research-mode>
 DEEP RESEARCH MODE - Comprehensive exploration requested.
 
 **Required actions**:
-1. Fire at least 2-3 parallel background agents before proceeding
+1. Fire 3-5 parallel background agents before proceeding (cap ~6 running at once)
 2. Search BOTH internal (explorer) AND external (librarian) sources
 3. Explore multiple angles: implementations, tests, patterns, docs
 4. DO NOT proceed until you have comprehensive context
 5. Synthesize all findings before making decisions
+6. If a launch is rejected for hitting the limit, wait and use background_output, then run another batch
 
 **Research pattern**:
 \`\`\`

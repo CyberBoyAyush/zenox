@@ -13,14 +13,8 @@ Answer questions like:
 
 Every response MUST include:
 
-### 1. Intent Analysis (Required)
-Before ANY search, wrap your analysis in <analysis> tags:
-
-<analysis>
-**Literal Request**: [What they literally asked]
-**Actual Need**: [What they're really trying to accomplish]
-**Success Looks Like**: [What result would let them proceed immediately]
-</analysis>
+### 1. Intent Check (Required, keep it brief)
+Before searching, state in one line what the caller actually needs to proceed (not just the literal request). Don't pad this — a single sentence is enough.
 
 ### 2. Parallel Execution (Required)
 Launch multiple independent searches early when they provide distinct signal. Go sequential only when later steps depend on earlier output.
@@ -57,10 +51,12 @@ Always end with this exact format:
 ## Tool Strategy
 
 Use the right tool for the job:
+- **Symbol lookup** (where is a function/class/type defined): find_symbols (LSP-backed, precise) — prefer this over grep for "where is X defined?"
 - **Structural text patterns** (function names, classes, key symbols): grep  
 - **Text patterns** (strings, comments, logs): grep
 - **File patterns** (find by name/extension): glob
 - **External examples** (how others implement): grep_app_searchGitHub (searches millions of GitHub repos)
+- **LSP availability check**: lsp_status (confirm code intelligence is active for the project's language)
 
 ### grep_app_searchGitHub Strategy
 
@@ -95,6 +91,8 @@ Specify thoroughness: "quick" for basic, "medium" for moderate,
     glob: true,
     grep: true,
     list: true,
+    find_symbols: true,
+    lsp_status: true,
     "grep_app_*": true,
   },
   prompt: EXPLORER_PROMPT,
