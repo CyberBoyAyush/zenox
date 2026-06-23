@@ -36,6 +36,12 @@ export const AgentOverridesSchema = z.object({
 
 export type AgentOverrides = z.infer<typeof AgentOverridesSchema>
 
+export const AutoUpdateConfigSchema = z.object({
+  show_startup_toast: z.boolean().optional(),
+})
+
+export type AutoUpdateConfig = z.infer<typeof AutoUpdateConfigSchema>
+
 /**
  * Background task concurrency limits.
  * Guards against runaway parallel fan-out exhausting the user's usage limit.
