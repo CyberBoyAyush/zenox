@@ -164,9 +164,14 @@ You have access to on-demand **Skills** via the \`skill\` tool. Skills bundle fo
 | Skill | Load when |
 |-------|-----------|
 | \`frontend-design\` | Building/styling any UI — components, pages, landing pages, dashboards. Load it (or delegate to \`ui-planner\`, which uses it) before writing visual code. |
-| \`grill-me\` | The user wants a plan or design stress-tested before committing. |
+| \`grill-me\` | The user asks you to question, interview, challenge, or "grill" them to stress-test a plan or design and resolve decisions before implementation. |
 
-**Usage**: \`skill({ name: "frontend-design" })\`. Load a skill once at the start of a matching task and follow its guidance. Skills auto-install with Zenox and stay in sync as it updates.
+**Usage**: \`skill({ name: "frontend-design" })\` or \`skill({ name: "grill-me" })\`. Load a skill once at the start of a matching task and follow its guidance. Skills auto-install with Zenox and stay in sync as it updates.
+
+### Skill Routing
+
+- When the user wants to be questioned, interviewed, challenged, or have a plan/design stress-tested, load \`grill-me\` **before asking the first question**. Follow the skill instead of improvising a questionnaire.
+- Do not load \`grill-me\` for ordinary factual questions or routine clarification; the user must be asking you to interview or challenge them.
 
 ---
 
@@ -300,6 +305,7 @@ Include these keywords in your prompt to unlock special modes:
 | \`deep research\` | Comprehensive exploration - fires 3-4 background agents |
 | \`explore codebase\` | Codebase mapping - multiple explorers in parallel |
 | \`review\` / \`self-review\` / \`code review\` | Activates Oracle code review mode - surfaces critical issues |
+| \`grill me\` / "question me" / "interview me" | Loads the Grill Me skill and works through decisions one question at a time |
 
 ---
 
@@ -394,6 +400,11 @@ const AGENT_LABELS: Record<string, string> = {
   "ui-planner": "UI Planner",
 }
 
+const SKILL_LABELS: Record<string, string> = {
+  "frontend-design": "Frontend Design",
+  "grill-me": "Grill Me",
+}
+
 /**
  * Build a concise note listing disabled agents so the primary agent does not
  * try to delegate to a subagent the user turned off. Returns "" when none are
@@ -415,14 +426,34 @@ Do not delegate to them or reference them — they will fail. Use the remaining 
 `
 }
 
+function buildDisabledSkillsNote(disabledSkills: Set<string>): string {
+  const disabled = [...disabledSkills].filter((skill) => skill in SKILL_LABELS)
+  if (disabled.length === 0) return ""
+
+  const list = disabled.map((skill) => `\`${skill}\` (${SKILL_LABELS[skill]})`).join(", ")
+  return `
+
+---
+
+## Disabled Skills
+
+The following bundled skills are **disabled** in this project and are NOT available: ${list}.
+This project-specific list overrides the generic capability examples above. Do not load or recommend these skills.`
+}
+
 export function getOrchestrationPrompt(
   agent: "build" | "plan" | string | undefined,
-  disabledAgents: Set<string> = new Set()
+  disabledAgents: Set<string> = new Set(),
+  disabledSkills: Set<string> = new Set()
 ): string | undefined {
   switch (agent) {
     case "build":
     case "plan":
-      return ORCHESTRATION_PROMPT + buildDisabledAgentsNote(disabledAgents)
+      return (
+        ORCHESTRATION_PROMPT +
+        buildDisabledAgentsNote(disabledAgents) +
+        buildDisabledSkillsNote(disabledSkills)
+      )
     default:
       return undefined
   }

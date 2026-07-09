@@ -50,9 +50,9 @@ bun run typecheck    # Type check without emitting
 | Agent | Purpose | Default Model |
 |-------|---------|---------------|
 | explorer | Codebase search, file discovery | claude-haiku-4-5 |
-| librarian | Library research, docs lookup | claude-sonnet-4-5 |
-| oracle | Architecture decisions, debugging | gpt-5.4 |
-| ui-planner | Frontend design, CSS, animations | gemini-3-pro-high |
+| librarian | Library research, docs lookup | claude-sonnet-4-6 |
+| oracle | Architecture decisions, debugging | gpt-5.6-sol |
+| ui-planner | Frontend design, CSS, animations | claude-opus-4-8 |
 
 ## Configuration
 

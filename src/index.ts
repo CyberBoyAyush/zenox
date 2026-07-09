@@ -54,6 +54,7 @@ const ZenoxPlugin: Plugin = async (ctx) => {
   // Load user/project configuration
   const pluginConfig = loadPluginConfig(ctx.directory)
   const disabledAgents = new Set(pluginConfig.disabled_agents ?? [])
+  const disabledSkills = new Set(pluginConfig.disabled_skills ?? [])
   const disabledMcps = pluginConfig.disabled_mcps ?? []
 
   // Initialize toast manager for background tasks
@@ -217,7 +218,7 @@ const ZenoxPlugin: Plugin = async (ctx) => {
       const agentType = getOrchestrationAgentType(agent)
       
       // Only inject for build/plan agents
-      const prompt = getOrchestrationPrompt(agentType, disabledAgents)
+      const prompt = getOrchestrationPrompt(agentType, disabledAgents, disabledSkills)
       if (prompt) {
         output.system.push(prompt)
       }

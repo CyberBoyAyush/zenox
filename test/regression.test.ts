@@ -71,9 +71,16 @@ describe("variant migration", () => {
 })
 
 describe("prompt regressions", () => {
-  test("oracle defaults to gpt-5.5 medium", () => {
-    expect(oracleAgent.model).toBe("openai/gpt-5.5")
+  test("oracle defaults to gpt-5.6-sol medium", () => {
+    expect(oracleAgent.model).toBe("openai/gpt-5.6-sol")
     expect(oracleAgent.variant).toBe("medium")
+  })
+
+  test("oracle prompt distinguishes grounded analysis from review mode", () => {
+    expect(oracleAgent.prompt).toContain("keep plausible causes open")
+    expect(oracleAgent.prompt).toContain("review format below overrides")
+    expect(oracleAgent.prompt).toContain("Do not file a finding solely because context is missing")
+    expect(oracleAgent.prompt).not.toContain("Dense and useful beats long and thorough")
   })
 
   test("orchestration prompt uses current tool names", () => {
@@ -87,6 +94,10 @@ describe("prompt regressions", () => {
     expect(explorerAgent.prompt).toContain("grep_app_searchGitHub")
     expect(explorerAgent.prompt).not.toContain("ast_grep_search")
     expect(explorerAgent.prompt).not.toContain("3+ tools simultaneously")
+    expect(explorerAgent.prompt).not.toContain("Intent Check (Required")
+    expect(explorerAgent.prompt).toContain("Never invent a file")
+    expect(explorerAgent.prompt).toContain("Disclose capped coverage")
+    expect(explorerAgent.prompt).toContain("Generated code")
   })
 
   test("librarian prompt avoids hard minimum call quotas", () => {
@@ -107,6 +118,9 @@ describe("prompt regressions", () => {
   test("orchestration prompt documents skills and background concurrency limits", () => {
     expect(ORCHESTRATION_PROMPT).toContain("## Skills")
     expect(ORCHESTRATION_PROMPT).toContain("frontend-design")
+    expect(ORCHESTRATION_PROMPT).toContain('skill({ name: "grill-me" })')
+    expect(ORCHESTRATION_PROMPT).toContain("before asking the first question")
+    expect(ORCHESTRATION_PROMPT).toContain("ordinary factual questions")
     expect(ORCHESTRATION_PROMPT).toContain("Concurrency Limits")
   })
 
@@ -115,6 +129,11 @@ describe("prompt regressions", () => {
     expect(uiPlannerAgent.prompt).toContain("frontend-design")
     // Inline skill body should be gone (now loaded via the skill tool)
     expect(uiPlannerAgent.prompt).not.toContain("## NEVER Use Generic AI Aesthetics")
+    expect(uiPlannerAgent.model).toBe("anthropic/claude-opus-4-8")
+    expect(uiPlannerAgent.prompt).toContain("override the skill's greenfield aesthetic guidance")
+    expect(uiPlannerAgent.prompt).toContain("reduced motion")
+    expect(uiPlannerAgent.prompt).toContain("materially benefits from a package")
+    expect(uiPlannerAgent.description).not.toContain("Code may be a bit messy")
   })
 
   test("explorer has LSP tools available", () => {
@@ -141,6 +160,14 @@ describe("prompt regressions", () => {
     expect(prompt).toContain("`ui-planner`")
     expect(prompt).toContain("`oracle`")
     expect(prompt).toContain("Do not delegate to them")
+  })
+
+  test("orchestration prompt warns about disabled skills", () => {
+    const prompt = getOrchestrationPrompt("build", new Set(), new Set(["grill-me"]))
+    expect(prompt).toContain("## Disabled Skills")
+    expect(prompt).toContain("`grill-me`")
+    expect(prompt).toContain("overrides the generic capability examples")
+    expect(prompt).toContain("Do not load or recommend")
   })
 
   test("getOrchestrationPrompt returns undefined for non build/plan agents", () => {

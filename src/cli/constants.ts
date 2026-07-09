@@ -25,13 +25,13 @@ export const AGENTS: AgentInfo[] = [
   {
     name: "oracle",
     displayName: "Oracle",
-    defaultModel: "openai/gpt-5.5",
+    defaultModel: "openai/gpt-5.6-sol",
     description: "Strategic technical advisor",
   },
   {
     name: "ui-planner",
     displayName: "UI-Planner",
-    defaultModel: "google/gemini-3-pro-high",
+    defaultModel: "anthropic/claude-opus-4-8",
     description: "Designer-turned-developer",
   },
 ]
@@ -39,8 +39,8 @@ export const AGENTS: AgentInfo[] = [
 export const DEFAULT_MODELS: Record<AgentName, string> = {
   explorer: "anthropic/claude-haiku-4-5",
   librarian: "anthropic/claude-sonnet-4-6",
-  oracle: "openai/gpt-5.5",
-  "ui-planner": "google/gemini-3-pro-high",
+  oracle: "openai/gpt-5.6-sol",
+  "ui-planner": "anthropic/claude-opus-4-8",
 }
 
 export type McpName = "exa" | "grep_app" | "sequential-thinking"

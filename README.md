@@ -55,8 +55,8 @@ That's it. Restart OpenCode and the agents are ready.
 |-------|-------------|---------------|
 | **Explorer** | Codebase grep, file discovery, pattern matching | `claude-haiku-4-5` |
 | **Librarian** | Library research, docs lookup, GitHub examples | `claude-sonnet-4-6` |
-| **Oracle** | Architecture decisions, debugging strategy, code review | `gpt-5.5` (variant medium) |
-| **UI Planner** | Frontend design, CSS, animations, visual polish | `gemini-3-pro-high` |
+| **Oracle** | Architecture decisions, debugging strategy, code review | `gpt-5.6-sol` (variant medium) |
+| **UI Planner** | Frontend design, CSS, animations, visual polish | `claude-opus-4-8` |
 
 ### How delegation works
 
@@ -256,7 +256,7 @@ Config saves to `~/.config/opencode/zenox.json`:
 {
   "agents": {
     "explorer": { "model": "anthropic/claude-sonnet-4-6" },
-    "oracle": { "model": "openai/gpt-5.5" }
+    "oracle": { "model": "openai/gpt-5.6-sol" }
   }
 }
 ```
