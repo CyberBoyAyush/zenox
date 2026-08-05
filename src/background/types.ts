@@ -23,6 +23,8 @@ export interface BackgroundTask {
   error?: string
   parentAgent?: string // Agent that was active when task was launched (plan/build)
   parentModel?: ParentModel // Model that was active when task was launched
+  /** True once this finished task has been included in an "ALL COMPLETE" notification. */
+  notified?: boolean
 }
 
 export interface LaunchInput {

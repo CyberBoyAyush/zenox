@@ -17,6 +17,7 @@ import {
   librarianAgent,
   oracleAgent,
   uiPlannerAgent,
+  inspectorAgent,
 } from "./agents"
 import { getOrchestrationPrompt } from "./orchestration/prompt"
 import {
@@ -68,6 +69,9 @@ const ZenoxPlugin: Plugin = async (ctx) => {
       ? {
           maxConcurrent: pluginConfig.background.max_concurrent,
           maxPerSession: pluginConfig.background.max_per_session,
+          taskTimeoutMs: pluginConfig.background.timeout_minutes
+            ? pluginConfig.background.timeout_minutes * 60_000
+            : undefined,
         }
       : undefined
   )
@@ -121,7 +125,10 @@ const ZenoxPlugin: Plugin = async (ctx) => {
     showStartupToast: pluginConfig.auto_update?.show_startup_toast,
   })
   const keywordDetectorHook = createKeywordDetectorHook(ctx)
-  const todoEnforcerHook = createTodoEnforcerHook(ctx)
+  const todoEnforcerHook = createTodoEnforcerHook(ctx, {
+    hasActiveBackgroundWork: (sessionID) =>
+      backgroundManager.hasActiveBackgroundWork(sessionID),
+  })
 
   // Initialize session, code intelligence, and project guidelines tools
   const sessionTools = createSessionTools(ctx.client)
@@ -259,9 +266,10 @@ const ZenoxPlugin: Plugin = async (ctx) => {
         clearSessionAgent(sessionID)
 
         // Detach this session's background tasks so their completions are
-        // silenced and never leak into other sessions' notifications.
+        // silenced and never leak into other sessions' notifications. Still-
+        // running children are aborted too — nobody is left to read them.
         if (sessionID) {
-          backgroundManager.detachParentSession(sessionID)
+          backgroundManager.detachParentSession(sessionID, ctx.client)
         }
 
         // Clear main session if this was it
@@ -310,6 +318,10 @@ const ZenoxPlugin: Plugin = async (ctx) => {
 
       if (!disabledAgents.has("ui-planner")) {
         config.agent["ui-planner"] = applyModelOverride("ui-planner", uiPlannerAgent)
+      }
+
+      if (!disabledAgents.has("inspector")) {
+        config.agent.inspector = applyModelOverride("inspector", inspectorAgent)
       }
 
 

@@ -19,15 +19,16 @@ Zenox supercharges [OpenCode](https://opencode.ai) with specialized AI agents th
 
 ## Features
 
-- **4 Specialized Agents** — Explorer, Librarian, Oracle, UI Planner
+- **5 Specialized Agents** — Explorer, Librarian, Oracle, UI Planner, Inspector
+- **Verification Loop** — Inspector runs your real checks and reports PASS/FAIL ground truth, not vibes
 - **Bundled Skills** — Auto-installs `frontend-design` & `grill-me`, auto-updated with Zenox
-- **Background Tasks** — Fire multiple agents in parallel (with safe concurrency limits)
+- **Hardened Background Tasks** — Parallel agents with concurrency limits, a per-task timeout, and a `background_list` recovery tool
 - **Thinking Mode Variants** — Configure thinking levels (high, xhigh, max) per agent
-- **Keyword Triggers** — `ultrawork`, `deep research`, `explore codebase`
+- **Keyword Triggers** — `ultrawork`, `deep research`, `explore codebase`, `review`, `blueprint`
 - **Session History** — Query past sessions to learn from previous work
 - **Code Intelligence** — Search symbols via LSP
 - **Project Guidelines Auto-Update** — Automatically keeps AGENTS.md and CLAUDE.md up-to-date
-- **Todo Continuation** — Auto-reminds when tasks are incomplete
+- **Todo Continuation** — Auto-reminds when tasks are incomplete (and stays quiet while background agents are working)
 - **Auto-Updates** — Plugin and bundled skills update automatically; toast on new version
 
 ## Why Zenox?
@@ -38,6 +39,7 @@ Most AI coding assistants use a single model for everything. Zenox takes a diffe
 - **Librarian** digs deep into docs — researches libraries, finds GitHub examples, citations included
 - **Oracle** thinks strategically — architecture decisions, debugging, technical trade-offs
 - **UI Planner** designs beautifully — CSS, animations, interfaces that don't look AI-generated
+- **Inspector** proves it — actually runs your tests/build/lint and reports PASS or FAIL, so "done" means something
 
 The main agent automatically delegates to specialists when needed. You don't have to manage them.
 
@@ -57,6 +59,9 @@ That's it. Restart OpenCode and the agents are ready.
 | **Librarian** | Library research, docs lookup, GitHub examples | `claude-sonnet-4-6` |
 | **Oracle** | Architecture decisions, debugging strategy, code review | `gpt-5.6-sol` (variant medium) |
 | **UI Planner** | Frontend design, CSS, animations, visual polish | `claude-opus-4-8` |
+| **Inspector** | Runs tests/build/lint, reports PASS/FAIL/PARTIAL/BLOCKED ground truth | `claude-sonnet-5` |
+
+All five agents are **read-only except UI Planner** (which writes/edits code) and **Inspector** (which can run `bash` to execute checks — but still cannot write or edit). Deny rules are declared explicitly per agent rather than relying on omission, since OpenCode's tool config is default-allow.
 
 ### How delegation works
 
@@ -74,7 +79,33 @@ You: "Should I use Redux or Zustand here?"
 
 You: "Make this dashboard look better"
 → UI Planner redesigns with proper aesthetics
+
+You: "Add rate limiting to the API"
+→ Build agent implements it, then delegates to Inspector with
+  "Done when: bun test passes" — Inspector runs it and reports PASS/FAIL
 ```
+
+## Verification Loop
+
+Implementing something isn't the same as proving it works. Inspector closes that gap:
+
+1. After a non-trivial change, the main agent delegates to Inspector with an explicit **`Done when:`** line — the exact check command(s) that prove the work (tests, typecheck, lint, build).
+2. Inspector **runs it for real** via `bash` — it never edits, fixes, or refactors. It only observes and reports.
+3. It returns a structured verdict: **PASS**, **PARTIAL** (the check passed but doesn't cover the full Done-when), **FAIL**, or **BLOCKED** (can't even run the check — missing deps, broken env).
+4. On FAIL, it also emits a **stable failure signature** — deterministic across re-runs of the same failure, excluding timestamps/paths/ports. If a fix attempt produces the *same* signature again, that's a sign of no progress, and the main agent escalates to **Oracle** instead of retrying blindly.
+
+```
+Build agent: implements a feature
+  → task(subagent_type: "inspector", prompt: "Done when: bun test && bun run typecheck")
+  → Inspector runs both, returns:
+      status: FAIL
+      signature: "auth.test.ts:42:TypeError-cannot-read-token"
+  → Build agent fixes the reported failure, re-verifies
+  → Same signature again? → escalate to Oracle instead of retrying the same way
+  → PASS → done, reported to you
+```
+
+Inspector's tools are strictly read + `bash` — it cannot write or edit files, so a bad verdict can never turn into a bad fix by the same agent that would be grading itself.
 
 ## Keyword Triggers
 
@@ -85,6 +116,8 @@ Include these magic words in your prompt to unlock special modes:
 | `ultrawork` or `ulw` | Maximum multi-agent coordination — fires parallel background agents, sets max precision |
 | `deep research` | Comprehensive exploration — fires 3-4 background agents (explorer + librarian) |
 | `explore codebase` | Codebase mapping — multiple explorers search in parallel |
+| `review` / `self-review` / `code review` | Fires exactly one Oracle task with the actual `git diff` — surfaces critical issues, not nitpicks |
+| `blueprint` | Locks a plan before any code: frame the problem, sketch the architecture, write an explicit `Done when:` line — which Inspector later verifies against |
 
 ### Examples
 
@@ -102,9 +135,16 @@ You: "deep research how this project handles errors"
 You: "explore codebase for payment logic"
 → 🔍 Explore Mode activated
 → Multiple explorers search patterns, implementations, tests
+
+You: "blueprint a rate limiter for the API"
+→ 📐 Blueprint Mode activated
+→ Frames the problem, sketches the architecture, locks a "Done when:" line
+→ Only then starts implementing — Inspector verifies against that line at the end
 ```
 
 You'll see a toast notification when these modes activate.
+
+> `grill me` / "question me" / "interview me" also loads the bundled `grill-me` skill to stress-test a plan — this one is recognized by the agent from intent, not a hard-coded regex, so phrasing can vary.
 
 ## Skills
 
@@ -154,6 +194,17 @@ background_task(agent="librarian", description="JWT best practices", prompt="...
 // You're notified when all tasks complete
 ```
 
+| Tool | What it does |
+|------|--------------|
+| `background_task` | Launch a background agent |
+| `background_output` | Retrieve a completed task's result |
+| `background_cancel` | Cancel a running task (if it was the last one, you also get the "all complete" summary right away) |
+| `background_list` | List this session's tasks and their status — use it if you lose track of a task ID or miss a notification |
+
+**Hung tasks don't hang forever.** Each task has a wall-clock timeout (default 30 minutes, configurable via `background.timeout_minutes`) — if a background session never goes idle, it's aborted automatically and reported as failed, freeing its concurrency slot.
+
+**Notifications are precise.** Each finished task is only ever included in one "all complete" summary — no duplicate messages if the notification path fires more than once for the same session.
+
 ### Toast Notifications
 
 Zenox shows toast notifications for background task events:
@@ -161,7 +212,7 @@ Zenox shows toast notifications for background task events:
 - ⚡ **Task Launched** — Shows task description and agent
 - ✅ **Task Completed** — Shows duration and remaining count
 - 🎉 **All Complete** — Shows summary of all finished tasks
-- ❌ **Task Failed** — Shows error message
+- ❌ **Task Failed** — Shows error message (including timeouts)
 
 ## Session History
 
@@ -256,7 +307,8 @@ Config saves to `~/.config/opencode/zenox.json`:
 {
   "agents": {
     "explorer": { "model": "anthropic/claude-sonnet-4-6" },
-    "oracle": { "model": "openai/gpt-5.6-sol" }
+    "oracle": { "model": "openai/gpt-5.6-sol" },
+    "inspector": { "model": "anthropic/claude-sonnet-5" }
   }
 }
 ```
@@ -294,31 +346,35 @@ Variants are applied safely — if an agent doesn't exist or the model doesn't s
 
 ```json
 {
-  "disabled_agents": ["ui-planner"],
+  "disabled_agents": ["ui-planner", "inspector"],
   "disabled_mcps": ["grep_app"],
   "disabled_skills": ["frontend-design", "grill-me"]
 }
 ```
 
+`disabled_agents` accepts any of: `explorer`, `librarian`, `oracle`, `ui-planner`, `inspector`.
+
 A skill listed in `disabled_skills` is never installed or synced. If it was previously installed by Zenox, it is left in place (Zenox won't auto-remove your files) — delete the folder manually if you want it gone.
 
 ### Background Task Limits
 
-Control how many background agents can run at once (guards against runaway fan-out that burns through your usage):
+Control how many background agents can run at once (guards against runaway fan-out that burns through your usage), and how long one is allowed to run before it's considered stuck:
 
 ```json
 {
   "background": {
     "max_concurrent": 6,
-    "max_per_session": 50
+    "max_per_session": 50,
+    "timeout_minutes": 30
   }
 }
 ```
 
 - `max_concurrent` — max agents running simultaneously (default `6`)
 - `max_per_session` — lifetime cap per session, a circuit breaker for runaway loops (default `50`)
+- `timeout_minutes` — minutes before a still-running task is aborted and marked failed (default `30`)
 
-When a limit is hit, the next `background_task` is rejected with a message telling the agent to wait and collect results — running tasks are never interrupted, no matter how long they take.
+When the concurrency/circuit-breaker limit is hit, the next `background_task` is rejected with a message telling the agent to wait and collect results. When the timeout fires, the task itself is aborted and its slot is freed — use `background_list` to see the timed-out task if you missed the failure toast.
 
 ## Included MCP Servers
 

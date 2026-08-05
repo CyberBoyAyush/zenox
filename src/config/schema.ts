@@ -9,6 +9,7 @@ export const AgentNameSchema = z.enum([
   "librarian",
   "oracle",
   "ui-planner",
+  "inspector",
 ])
 
 export type AgentName = z.infer<typeof AgentNameSchema>
@@ -32,6 +33,7 @@ export const AgentOverridesSchema = z.object({
   librarian: AgentOverrideConfigSchema.optional(),
   oracle: AgentOverrideConfigSchema.optional(),
   "ui-planner": AgentOverrideConfigSchema.optional(),
+  inspector: AgentOverrideConfigSchema.optional(),
 })
 
 export type AgentOverrides = z.infer<typeof AgentOverridesSchema>
@@ -45,6 +47,12 @@ export const BackgroundConfigSchema = z.object({
   max_concurrent: z.number().int().min(1).max(50).default(6),
   /** Max total background tasks a single session may spawn (circuit breaker). */
   max_per_session: z.number().int().min(1).max(500).default(50),
+  /**
+   * Minutes before a still-running background task is aborted and marked
+   * failed. A task whose child session never goes idle would otherwise hold
+   * a concurrency slot forever. Default: 30.
+   */
+  timeout_minutes: z.number().int().min(1).max(240).optional(),
 })
 
 export type BackgroundConfig = z.infer<typeof BackgroundConfigSchema>

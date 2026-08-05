@@ -88,6 +88,10 @@ code with exceptional visual output.`,
   mode: "subagent",
   model: "anthropic/claude-opus-4-8",
   color: "#EC4899",
+  // Deliberately does NOT spread READ_ONLY_TOOLS: `patch` collapses onto the
+  // same permission key as `write`/`edit`, so including it here — even as an
+  // override — would silently deny the editing this agent exists to do.
+  // See src/agents/tool-policy.ts.
   tools: {
     write: true,
     edit: true,

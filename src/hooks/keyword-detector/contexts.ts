@@ -114,7 +114,43 @@ task(
 **Verdict categories**: Ship it / Ship with minor fixes / Needs changes / Needs rethinking.
 </review-mode>`
 
-export type KeywordType = "ultrawork" | "deep-research" | "explore" | "review"
+export const BLUEPRINT_CONTEXT = `<blueprint-mode>
+BLUEPRINT MODE — Staged plan-lock pipeline active. No code before the plan is locked.
+
+**Required stages, in order:**
+1. **Frame the problem** — restate the actual requirement, list edge cases and open questions
+2. **Sketch the architecture** — which files/modules are touched, what approach, what's explicitly out of scope
+3. **Lock a "Done when:" line** — the exact check command(s) that will prove the work is complete (test/build/lint/typecheck). This line is handed to \`inspector\` later — make it concrete and runnable, not vague
+4. Only then start implementation
+
+**Do NOT skip ahead to code** before stage 3 is written down and shared with the user (or stated explicitly in your own plan) — premature coding is exactly what this mode exists to prevent.
+
+**Pattern:**
+\`\`\`
+## Problem
+[restate the requirement, edge cases, open questions]
+
+## Architecture
+[files touched, approach, what's out of scope]
+
+## Done when:
+[exact command(s) — e.g. "bun test && bun run typecheck"]
+
+// only now: begin implementation, then at the end:
+task(
+  subagent_type: "inspector",
+  description: "Verify implementation",
+  prompt: "Done when: <the exact line locked above>. Run the checks and report the verdict."
+)
+\`\`\`
+</blueprint-mode>`
+
+export type KeywordType =
+  | "ultrawork"
+  | "deep-research"
+  | "explore"
+  | "review"
+  | "blueprint"
 
 export interface KeywordConfig {
   type: KeywordType
@@ -161,6 +197,15 @@ export const KEYWORD_CONFIGS: KeywordConfig[] = [
     toast: {
       title: "🔎 Review Mode",
       message: "Code review via Oracle activated. Critical issues will be surfaced.",
+    },
+  },
+  {
+    type: "blueprint",
+    pattern: /\bblueprint\b/i,
+    context: BLUEPRINT_CONTEXT,
+    toast: {
+      title: "📐 Blueprint Mode",
+      message: "Plan-lock pipeline active. Done-when line required before code.",
     },
   },
 ]

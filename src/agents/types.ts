@@ -6,7 +6,8 @@ export type BuiltinAgentName =
   | "explorer"
   | "librarian"
   | "oracle"
-  | "ui-planner";
+  | "ui-planner"
+  | "inspector";
 
 export type AgentOverrideConfig = Partial<AgentConfig> & {
   prompt_append?: string;

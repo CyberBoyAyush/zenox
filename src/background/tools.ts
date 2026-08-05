@@ -29,7 +29,7 @@ Use for independent research tasks that benefit from parallelism.`,
       agent: tool.schema
         .string()
         .describe(
-          "Agent to use: explorer, librarian, oracle, or ui-planner"
+          "Agent to use: explorer, librarian, oracle, ui-planner, or inspector"
         ),
       description: tool.schema
         .string()
@@ -95,12 +95,49 @@ Use if a task is no longer needed or taking too long.`,
         .string()
         .describe("Task ID to cancel"),
     },
-    async execute(args) {
+    async execute(args, context) {
       const cancelled = await manager.cancel(client, args.task_id)
-      if (cancelled) {
-        return `Task ${args.task_id} has been cancelled.`
+      if (!cancelled) {
+        return `Could not cancel task ${args.task_id}. It may have already completed or does not exist.`
       }
-      return `Could not cancel task ${args.task_id}. It may have already completed or does not exist.`
+
+      let output = `Task ${args.task_id} has been cancelled.`
+
+      // If that was the last running task for this session, surface the same
+      // "all complete" signal a normal completion would — otherwise the
+      // caller never learns the fan-out is fully done (cancel() itself can't
+      // safely push this: the parent session is mid-turn while this tool runs).
+      const notification = manager.getCompletionStatusForSession(context.sessionID)
+      if (notification?.allComplete) {
+        output += `\n\n${notification.message}`
+      }
+
+      return output
+    },
+  })
+
+  const backgroundList = tool({
+    description: `List background tasks launched by this session with their status.
+Use to check what is running, or to recover task IDs if a completion notification was lost.`,
+    args: {},
+    async execute(_args, context) {
+      const tasks = manager
+        .listAllTasks()
+        .filter((t) => t.parentSessionID === context.sessionID)
+
+      if (tasks.length === 0) {
+        return "No background tasks launched by this session."
+      }
+
+      const now = Date.now()
+      const lines = tasks.map((t) => {
+        const end = t.completedAt?.getTime() ?? now
+        const seconds = Math.round((end - t.startedAt.getTime()) / 1000)
+        const error = t.error ? ` — ${t.error}` : ""
+        return `- ${t.id} [${t.status}] ${t.description} (${t.agent}, ${seconds}s)${error}`
+      })
+
+      return `Background tasks for this session:\n${lines.join("\n")}\n\nUse background_output(task_id) for completed results.`
     },
   })
 
@@ -108,5 +145,6 @@ Use if a task is no longer needed or taking too long.`,
     background_task: backgroundTask,
     background_output: backgroundOutput,
     background_cancel: backgroundCancel,
+    background_list: backgroundList,
   }
 }

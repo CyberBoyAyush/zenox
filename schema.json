@@ -27,6 +27,10 @@
         "ui-planner": {
           "$ref": "#/$defs/agentOverride",
           "description": "Designer-turned-developer for UI/UX (default: anthropic/claude-opus-4-8)"
+        },
+        "inspector": {
+          "$ref": "#/$defs/agentOverride",
+          "description": "Runs project checks and reports PASS/FAIL/PARTIAL/BLOCKED ground truth (default: anthropic/claude-sonnet-5)"
         }
       },
       "additionalProperties": false
@@ -36,7 +40,7 @@
       "description": "List of agents to disable",
       "items": {
         "type": "string",
-        "enum": ["explorer", "librarian", "oracle", "ui-planner"]
+        "enum": ["explorer", "librarian", "oracle", "ui-planner", "inspector"]
       },
       "uniqueItems": true
     },
@@ -87,6 +91,13 @@
           "minimum": 1,
           "maximum": 500,
           "default": 50
+        },
+        "timeout_minutes": {
+          "type": "integer",
+          "description": "Minutes before a still-running background task is aborted and marked failed; guards against a hung child session holding a concurrency slot forever (default: 30)",
+          "minimum": 1,
+          "maximum": 240,
+          "default": 30
         }
       },
       "additionalProperties": false

@@ -43,7 +43,15 @@ interface MessageInfo {
   role?: string
 }
 
-export function createTodoEnforcerHook(ctx: PluginInput) {
+export interface TodoEnforcerOptions {
+  /** Skip nudging while this session has background work running/recently finished. */
+  hasActiveBackgroundWork?: (sessionID: string) => boolean
+}
+
+export function createTodoEnforcerHook(
+  ctx: PluginInput,
+  options: TodoEnforcerOptions = {}
+) {
   const sessionStates = new Map<string, SessionState>()
 
   const cleanupOldStates = () => {
@@ -63,6 +71,10 @@ export function createTodoEnforcerHook(ctx: PluginInput) {
       const props = event.properties as { sessionID?: string }
       const sessionID = props?.sessionID
       if (!sessionID) return
+
+      // A background fan-out is still in flight (or just finished) for this
+      // session — don't nudge, the agent is already working via delegation.
+      if (options.hasActiveBackgroundWork?.(sessionID)) return
 
       // Get or create session state
       let state = sessionStates.get(sessionID)

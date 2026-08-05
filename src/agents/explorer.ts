@@ -1,4 +1,5 @@
 import type { AgentConfig } from "@opencode-ai/sdk"
+import { READ_ONLY_TOOLS } from "./tool-policy"
 
 const EXPLORER_PROMPT = `You are a codebase search specialist. Your job: find files and code, return actionable results.
 
@@ -93,9 +94,7 @@ Specify thoroughness: "quick" for basic, "medium" for moderate,
   color: "#3B82F6",
   temperature: 0.1,
   tools: {
-    write: false,
-    edit: false,
-    task: false,
+    ...READ_ONLY_TOOLS,
     read: true,
     glob: true,
     grep: true,

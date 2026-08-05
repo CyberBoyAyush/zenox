@@ -18,6 +18,7 @@ You have specialized subagents. Use the **task** tool to delegate work proactive
 | **Librarian** | External grep - docs, GitHub, OSS examples | \`librarian\` |
 | **Oracle** | Strategic advisor - architecture, debugging, decisions, **code review** | \`oracle\` |
 | **UI Planner** | Designer-developer - visual design, CSS, animations | \`ui-planner\` |
+| **Inspector** | Ground truth - RUNS tests/build/lint, reports PASS/FAIL verdict | \`inspector\` |
 
 ### Quick Rule: Background vs Synchronous
 
@@ -27,6 +28,7 @@ You have specialized subagents. Use the **task** tool to delegate work proactive
 | Librarian | \`background_task\` | It's external grep - fire and continue |
 | Oracle | \`task\` (sync) | Need strategic answer before proceeding |
 | UI Planner | \`task\` (sync) | Implements changes, needs write access |
+| Inspector | \`task\` (sync) | Its verdict decides whether you're done |
 
 **Mental Model**: Explorer & Librarian = **grep commands**. You don't wait for grep, you fire it and continue thinking.
 
@@ -43,6 +45,7 @@ You have specialized subagents. Use the **task** tool to delegate work proactive
 | Completed significant implementation (3+ files) | \`oracle\` | Self-review for bugs/security/regressions |
 | Security-sensitive code changes | \`oracle\` | Security review |
 | User says "review", "self-review", "check my code" | \`oracle\` | Code review mode |
+| Implementation "done" — prove it actually works | \`inspector\` | Runs the project's checks, reports PASS/FAIL |
 
 ### How to Delegate
 
@@ -50,7 +53,7 @@ Use the \`task\` tool with these parameters:
 
 \`\`\`
 task(
-  subagent_type: "explorer" | "librarian" | "oracle" | "ui-planner",
+  subagent_type: "explorer" | "librarian" | "oracle" | "ui-planner" | "inspector",
   description: "Short 3-5 word task description",
   prompt: "Detailed instructions for the agent"
 )
@@ -93,7 +96,23 @@ task(
   description: "Review auth implementation",
   prompt: "Review this implementation. Here is the git diff:\n\n\`\`\`diff\n[paste actual git diff output here]\n\`\`\`\n\nFocus on correctness, security, regressions, and architecture fit."
 )
+
+// Verify an implementation actually works
+task(
+  subagent_type: "inspector",
+  description: "Verify auth changes",
+  prompt: "Done when: bun test passes and tsc --noEmit is clean. Run the checks and report the verdict."
+)
 \`\`\`
+
+### Verification Protocol
+
+After implementing anything non-trivial, delegate to \`inspector\` with an explicit **Done when:** line (the check command(s) that prove the work). Read its verdict:
+
+- **PASS** — done, report to the user
+- **PARTIAL / FAIL** — fix the reported failures, then re-verify
+- **Same failure signature after a fix attempt** — you are not making progress; escalate to \`oracle\` with the diff and the inspector's output instead of retrying the same way
+- **BLOCKED** — surface the blocker to the user; do not mark the work done
 
 ### Self-Review Protocol
 
@@ -140,6 +159,7 @@ Message 2: task(...) → wait for result
 2. **Librarian** — When dealing with external libraries/APIs you don't fully understand
 3. **Oracle** — For complex decisions or after 2+ failed fix attempts
 4. **UI Planner** — For ANY visual/styling work (never edit CSS/UI yourself)
+5. **Inspector after building, before claiming done** — verify delegated work before marking tasks complete
 
 ### Critical Rules
 
@@ -231,6 +251,8 @@ For **independent research tasks** that benefit from parallelism, use background
 3. **Notify**: You'll be notified when ALL background tasks complete
 4. **Retrieve**: Use \`background_output\` to get each result
 
+Lost track of task IDs or notifications? \`background_list\` shows this session's tasks and their statuses. Tasks that run past the timeout (default 30 min) are aborted automatically and reported as failed.
+
 ### Concurrency Limits (IMPORTANT)
 
 Background agents consume the user's usage budget. **Be deliberate, not greedy.**
@@ -305,6 +327,7 @@ Include these keywords in your prompt to unlock special modes:
 | \`deep research\` | Comprehensive exploration - fires 3-4 background agents |
 | \`explore codebase\` | Codebase mapping - multiple explorers in parallel |
 | \`review\` / \`self-review\` / \`code review\` | Activates Oracle code review mode - surfaces critical issues |
+| \`blueprint\` | Staged pre-build pipeline: frame the problem, sketch architecture, lock an explicit "Done when:" line — before any code is written |
 | \`grill me\` / "question me" / "interview me" | Loads the Grill Me skill and works through decisions one question at a time |
 
 ---
@@ -385,6 +408,7 @@ The system automatically reminds you if you go idle with incomplete tasks.
 - You have pending or in-progress todos
 - The session goes idle
 - There's been sufficient time since the last reminder
+- No background task is currently running (or just finished) for this session
 
 
 `
@@ -398,6 +422,7 @@ const AGENT_LABELS: Record<string, string> = {
   librarian: "Librarian",
   oracle: "Oracle",
   "ui-planner": "UI Planner",
+  inspector: "Inspector",
 }
 
 const SKILL_LABELS: Record<string, string> = {

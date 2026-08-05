@@ -24,11 +24,28 @@ export interface BackgroundLimits {
   maxConcurrent: number
   /** Max total tasks a single parent session may spawn (runaway circuit breaker). */
   maxPerSession: number
+  /**
+   * Wall-clock timeout per task. A task whose child session never goes idle
+   * would otherwise hold a concurrency slot forever; on timeout it is
+   * aborted and marked failed.
+   */
+  taskTimeoutMs: number
 }
 
 export const DEFAULT_BACKGROUND_LIMITS: BackgroundLimits = {
   maxConcurrent: 6,
   maxPerSession: 50,
+  taskTimeoutMs: 30 * 60_000,
+}
+
+const TERMINAL_STATUSES = new Set<BackgroundTask["status"]>([
+  "completed",
+  "failed",
+  "cancelled",
+])
+
+function isFinished(task: BackgroundTask): boolean {
+  return TERMINAL_STATUSES.has(task.status)
 }
 
 /** Thrown by launch() when a concurrency/circuit-breaker limit is hit. */
@@ -60,12 +77,15 @@ export class BackgroundManager {
   private reserved = 0
   /** Set once dispose() runs; guards against in-flight launches mutating state. */
   private disposed = false
+  /** Per-task timeout timers, cleared on completion/cancel/dispose. */
+  private timeouts = new Map<string, ReturnType<typeof setTimeout>>()
 
   setLimits(limits: Partial<BackgroundLimits> | undefined): void {
     if (!limits) return
     this.limits = {
       maxConcurrent: limits.maxConcurrent ?? this.limits.maxConcurrent,
       maxPerSession: limits.maxPerSession ?? this.limits.maxPerSession,
+      taskTimeoutMs: limits.taskTimeoutMs ?? this.limits.taskTimeoutMs,
     }
   }
 
@@ -117,6 +137,61 @@ export class BackgroundManager {
 
   private generateTaskId(): string {
     return `bg_${crypto.randomUUID().slice(0, 8)}`
+  }
+
+  private clearTaskTimeout(taskId: string): void {
+    const timer = this.timeouts.get(taskId)
+    if (timer) {
+      clearTimeout(timer)
+      this.timeouts.delete(taskId)
+    }
+  }
+
+  /** Marks a task failed, shows the toast, and notifies the parent (unless detached). */
+  private failTask(task: BackgroundTask, error: string): void {
+    task.status = "failed"
+    task.error = error
+    task.completedAt = new Date()
+    this.clearTaskTimeout(task.id)
+
+    if (this.detachedParentSessions.has(task.parentSessionID)) return
+
+    if (this.toastManager) {
+      this.toastManager.showFailureToast(task.id, error).catch(() => {})
+    }
+
+    // A failure never emits session.idle, so push a scoped completion
+    // notification directly so the parent agent learns of it.
+    const notification = this.getCompletionStatusForSession(
+      task.parentSessionID,
+      task
+    )
+    if (notification && this.completionNotifier) {
+      this.completionNotifier(notification)
+    }
+  }
+
+  /**
+   * Aborts and fails the task if it is still running when the timeout fires.
+   * The abort call is fire-and-forget (not awaited) deliberately: this is the
+   * safety net for a session that is already unresponsive, so blocking on its
+   * abort() would defeat the point of having a timeout at all.
+   */
+  private scheduleTaskTimeout(client: OpencodeClient, task: BackgroundTask): void {
+    const timeoutMs = this.limits.taskTimeoutMs
+    const timer = setTimeout(() => {
+      this.timeouts.delete(task.id)
+      const current = this.tasks.get(task.id)
+      if (!current || current.status !== "running") return
+      client.session.abort({ path: { id: current.sessionID } }).catch(() => {})
+      this.failTask(
+        current,
+        `Timed out after ${Math.round(timeoutMs / 60_000)} minutes and was aborted`
+      )
+    }, timeoutMs)
+    // A pending timeout must not hold the process open.
+    ;(timer as { unref?: () => void }).unref?.()
+    this.timeouts.set(task.id, timer)
   }
 
   async launch(
@@ -218,6 +293,10 @@ export class BackgroundManager {
       }).catch(() => {})
     }
 
+    // Schedule the wall-clock timeout so a task whose child session never
+    // goes idle cannot hold a concurrency slot forever.
+    this.scheduleTaskTimeout(client, task)
+
     // Fire-and-forget: send prompt without awaiting result
     // Includes retry logic for agent.name undefined errors
     const sendPrompt = async (retryWithoutAgent = false) => {
@@ -245,27 +324,8 @@ export class BackgroundManager {
 
         // Handle other errors
         const existingTask = this.tasks.get(task.id)
-        if (existingTask) {
-          existingTask.status = "failed"
-          existingTask.error = errorMsg
-          existingTask.completedAt = new Date()
-
-          // Show failure toast
-          if (this.toastManager) {
-            this.toastManager.showFailureToast(task.id, existingTask.error).catch(() => {})
-          }
-
-          // A failed launch never emits session.idle, so push a scoped
-          // completion notification directly so the parent agent learns of it.
-          if (!this.detachedParentSessions.has(existingTask.parentSessionID)) {
-            const notification = this.getCompletionStatusForSession(
-              existingTask.parentSessionID,
-              existingTask
-            )
-            if (notification && this.completionNotifier) {
-              this.completionNotifier(notification)
-            }
-          }
+        if (existingTask && existingTask.status === "running") {
+          this.failTask(existingTask, errorMsg)
         }
       }
     }
@@ -361,14 +421,28 @@ export class BackgroundManager {
       return false
     }
 
+    // Status flips BEFORE the await: aborting emits session.idle for the
+    // child, which would otherwise be seen while the task is still "running"
+    // and get misread by handleSessionIdle as a clean completion.
+    //
+    // Trade-off, accepted deliberately: this frees the concurrency slot
+    // slightly before the child session has actually torn down server-side
+    // (abort() is normally near-instant, so the window is small). The
+    // alternative — flipping status only after abort() resolves — is worse:
+    // it leaves the task "running" (holding its slot) indefinitely if
+    // abort() ever hangs or rejects, which is exactly the failure mode the
+    // task timeout below exists to guard against.
+    task.status = "cancelled"
+    task.completedAt = new Date()
+    this.clearTaskTimeout(task.id)
+
     try {
       await client.session.abort({ path: { id: task.sessionID } })
-      task.status = "cancelled"
-      task.completedAt = new Date()
-      return true
     } catch {
-      return false
+      // Already gone server-side; the task is cancelled either way.
     }
+
+    return true
   }
 
   // Called when session.idle event is received
@@ -383,6 +457,7 @@ export class BackgroundManager {
     // Mark task as complete
     task.status = "completed"
     task.completedAt = new Date()
+    this.clearTaskTimeout(task.id)
 
     // If the parent session was deleted, keep the lifecycle silent and drop the
     // finished task so it never leaks into another session's notifications.
@@ -420,17 +495,26 @@ export class BackgroundManager {
     }
 
     const runningTasks = sessionTasks.filter((t) => t.status === "running")
-    const completedTasks = sessionTasks.filter(
-      (t) => t.status === "completed" || t.status === "failed"
-    )
+    // Only tasks not yet included in a prior notification — otherwise calling
+    // this twice after all-complete would re-send the same "ALL COMPLETE"
+    // task list every time.
+    const completedTasks = sessionTasks.filter((t) => isFinished(t) && !t.notified)
 
-    const allComplete = runningTasks.length === 0 && completedTasks.length > 0
+    if (completedTasks.length === 0) {
+      return null
+    }
+
+    const allComplete = runningTasks.length === 0
 
     let message: string
     if (allComplete) {
       const taskList = completedTasks
         .map((t) => `- ${t.id}: ${t.description} (${t.agent})`)
         .join("\n")
+
+      for (const t of completedTasks) {
+        t.notified = true
+      }
 
       message = `<system-reminder>
 [ALL BACKGROUND TASKS COMPLETE]
@@ -476,6 +560,22 @@ ${runningTasks.length} task(s) still running. Continue working.
     return [...this.tasks.values()].filter((t) => t.status === "running")
   }
 
+  /**
+   * True if this session has a background task running, or one that finished
+   * within `graceMs` — used to skip the todo-continuation nudge while
+   * background work is (or was just) in flight for this session.
+   */
+  hasActiveBackgroundWork(parentSessionID: string, graceMs = 60_000): boolean {
+    const now = Date.now()
+    for (const task of this.tasks.values()) {
+      if (task.parentSessionID !== parentSessionID) continue
+      if (task.status === "running") return true
+      const finishedAt = task.completedAt?.getTime()
+      if (finishedAt !== undefined && now - finishedAt < graceMs) return true
+    }
+    return false
+  }
+
   listAllTasks(): BackgroundTask[] {
     return [...this.tasks.values()]
   }
@@ -490,14 +590,32 @@ ${runningTasks.length} task(s) still running. Continue working.
 
   /**
    * Mark a parent session as detached (e.g. it was deleted). Finished tasks for
-   * it are dropped immediately; still-running tasks finish silently (no
-   * notification) since there's no session left to notify.
+   * it are dropped immediately. With a client, still-running tasks are also
+   * aborted — nobody is left to read their results, so letting them keep
+   * running just burns tokens. Without a client they finish silently (the
+   * detached set suppresses their notifications).
+   *
+   * The abort is fire-and-forget and the task is dropped from bookkeeping
+   * immediately rather than waiting for it to settle: the parent session is
+   * gone either way, so there is nothing left to keep a concurrency slot for.
+   * If abort() silently fails, the child keeps running unobserved — the same
+   * outcome as calling this without a client, so this path is never worse
+   * than the prior (no-abort) behavior, only sometimes better.
    */
-  detachParentSession(sessionID: string): void {
+  detachParentSession(sessionID: string, client?: OpencodeClient): void {
     if (!sessionID) return
     this.detachedParentSessions.add(sessionID)
     for (const [id, task] of this.tasks) {
-      if (task.parentSessionID === sessionID && task.status !== "running") {
+      if (task.parentSessionID !== sessionID) continue
+      if (task.status === "running") {
+        if (client) {
+          client.session.abort({ path: { id: task.sessionID } }).catch(() => {})
+          task.status = "cancelled"
+          task.completedAt = new Date()
+          this.clearTaskTimeout(id)
+          this.tasks.delete(id)
+        }
+      } else {
         this.tasks.delete(id)
       }
     }
@@ -540,6 +658,10 @@ ${runningTasks.length} task(s) still running. Continue working.
    */
   dispose(): void {
     this.disposed = true
+    for (const timer of this.timeouts.values()) {
+      clearTimeout(timer)
+    }
+    this.timeouts.clear()
     this.tasks.clear()
     this.spawnCounts.clear()
     this.detachedParentSessions.clear()

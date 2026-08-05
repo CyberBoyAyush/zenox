@@ -1,6 +1,11 @@
 export const PACKAGE_NAME = "zenox"
 
-export type AgentName = "explorer" | "librarian" | "oracle" | "ui-planner"
+export type AgentName =
+  | "explorer"
+  | "librarian"
+  | "oracle"
+  | "ui-planner"
+  | "inspector"
 
 export interface AgentInfo {
   name: AgentName
@@ -34,6 +39,12 @@ export const AGENTS: AgentInfo[] = [
     defaultModel: "anthropic/claude-opus-4-8",
     description: "Designer-turned-developer",
   },
+  {
+    name: "inspector",
+    displayName: "Inspector",
+    defaultModel: "anthropic/claude-sonnet-5",
+    description: "Runs checks, reports PASS/FAIL ground truth",
+  },
 ]
 
 export const DEFAULT_MODELS: Record<AgentName, string> = {
@@ -41,6 +52,7 @@ export const DEFAULT_MODELS: Record<AgentName, string> = {
   librarian: "anthropic/claude-sonnet-4-6",
   oracle: "openai/gpt-5.6-sol",
   "ui-planner": "anthropic/claude-opus-4-8",
+  inspector: "anthropic/claude-sonnet-5",
 }
 
 export type McpName = "exa" | "grep_app" | "sequential-thinking"

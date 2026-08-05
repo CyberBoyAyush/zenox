@@ -1,4 +1,5 @@
 import type { AgentConfig } from "@opencode-ai/sdk"
+import { READ_ONLY_TOOLS } from "./tool-policy"
 
 const LIBRARIAN_PROMPT = `# THE LIBRARIAN
 
@@ -196,9 +197,7 @@ open source, or understand how something works.`,
   color: "#8B5CF6",
   temperature: 0.1,
   tools: {
-    write: false,
-    edit: false,
-    task: false,
+    ...READ_ONLY_TOOLS,
     read: true,
     glob: true,
     grep: true,

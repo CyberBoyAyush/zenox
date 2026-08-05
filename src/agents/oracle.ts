@@ -1,4 +1,5 @@
 import type { AgentConfig } from "@opencode-ai/sdk"
+import { READ_ONLY_TOOLS } from "./tool-policy"
 
 const ORACLE_PROMPT = `You are a strategic technical advisor with deep reasoning capabilities, operating as a specialized consultant within an AI-assisted development environment.
 
@@ -136,9 +137,7 @@ surface critical issues, security concerns, and regressions.`,
   color: "#F59E0B",
   temperature: 0.1,
   tools: {
-    write: false,
-    edit: false,
-    task: false,
+    ...READ_ONLY_TOOLS,
     read: true,
     glob: true,
     grep: true,
