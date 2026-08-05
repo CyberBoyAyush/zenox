@@ -166,8 +166,15 @@ export class BackgroundManager {
       task.parentSessionID,
       task
     )
-    if (notification && this.completionNotifier) {
-      this.completionNotifier(notification)
+    if (notification) {
+      if (this.completionNotifier) {
+        this.completionNotifier(notification)
+      } else {
+        // Nobody is registered to attempt delivery — release the claim
+        // immediately instead of leaving these tasks stuck "claiming"
+        // forever (which would also wedge hasActiveBackgroundWork "on").
+        this.releaseClaim(notification.completedTasks)
+      }
     }
   }
 
@@ -481,6 +488,12 @@ export class BackgroundManager {
    * other sessions are never included, preventing cross-session bleed.
    * `justFinished` is the task that triggered this notification (so the partial
    * message names the correct task regardless of Map insertion order).
+   *
+   * The all-complete batch is claimed synchronously (see `claiming` on
+   * BackgroundTask) before this function returns: a second caller racing in
+   * before the first caller's delivery resolves will not see the same tasks.
+   * The caller must confirm with markNotified() on success or releaseClaim()
+   * on failure — never both, never neither.
    */
   getCompletionStatusForSession(
     parentSessionID: string,
@@ -495,10 +508,13 @@ export class BackgroundManager {
     }
 
     const runningTasks = sessionTasks.filter((t) => t.status === "running")
-    // Only tasks not yet included in a prior notification — otherwise calling
-    // this twice after all-complete would re-send the same "ALL COMPLETE"
-    // task list every time.
-    const completedTasks = sessionTasks.filter((t) => isFinished(t) && !t.notified)
+    // Only tasks not yet included in a prior notification, and not currently
+    // claimed by another in-flight delivery attempt — otherwise two racing
+    // callers could both grab the same batch, or calling this twice after
+    // all-complete would re-send the same "ALL COMPLETE" task list.
+    const completedTasks = sessionTasks.filter(
+      (t) => isFinished(t) && !t.notified && !t.claiming
+    )
 
     if (completedTasks.length === 0) {
       return null
@@ -508,21 +524,32 @@ export class BackgroundManager {
 
     let message: string
     if (allComplete) {
+      // Claim synchronously, before any caller can await anything. A second
+      // concurrent call will exclude these via the `!t.claiming` filter above.
+      for (const t of completedTasks) {
+        t.claiming = true
+      }
+
+      // Annotate anything that did not finish cleanly. Cancelled and failed
+      // tasks have no results worth fetching, and listing them bare under
+      // "Completed" sends the agent off to retrieve an aborted session.
       const taskList = completedTasks
-        .map((t) => `- ${t.id}: ${t.description} (${t.agent})`)
+        .map((t) => {
+          const suffix = t.status === "completed" ? "" : ` — ${t.status}`
+          return `- ${t.id}: ${t.description} (${t.agent})${suffix}`
+        })
         .join("\n")
 
-      for (const t of completedTasks) {
-        t.notified = true
-      }
+      const retrievable = completedTasks.some((t) => t.status === "completed")
+      const retrieveLine = retrievable
+        ? `\n\nUse \`background_output(task_id="<id>")\` to retrieve each completed result and synthesize findings.`
+        : `\n\nNothing produced output. Handle this work yourself rather than retrying the same fan-out.`
 
       message = `<system-reminder>
 [ALL BACKGROUND TASKS COMPLETE]
 
-**Completed:**
-${taskList}
-
-Use \`background_output(task_id="<id>")\` to retrieve each result and synthesize findings.
+**Finished:**
+${taskList}${retrieveLine}
 </system-reminder>`
     } else {
       // Prefer the explicitly-passed just-finished task; otherwise fall back to
@@ -561,19 +588,61 @@ ${runningTasks.length} task(s) still running. Continue working.
   }
 
   /**
-   * True if this session has a background task running, or one that finished
-   * within `graceMs` — used to skip the todo-continuation nudge while
-   * background work is (or was just) in flight for this session.
+   * True if this session has a background task running, or a completion
+   * notification for it is currently being claimed/delivered — used to skip
+   * the todo-continuation nudge while background work is (or is about to be)
+   * in flight for this session.
+   *
+   * Deliberately state-based, not time-based: an earlier version suppressed
+   * the enforcer for a fixed window (e.g. 60s, later 15s) after a task
+   * finished. Since the enforcer only fires on the `session.idle` event
+   * (edge-triggered, not polled), a fast synthesis turn that went idle before
+   * the window elapsed would still hit the exact same "lost edge" stall —
+   * shrinking the window only reduced how often it happened, it never closed
+   * it. Tying suppression to the actual `claiming` lifecycle instead means it
+   * clears the instant delivery is confirmed (success or failure), and by
+   * then the parent session is busy processing that delivered message (or,
+   * on failure, the very next idle re-attempts it — see the retry in
+   * ZenoxPlugin's session.idle handler) rather than sitting idle mid-window.
    */
-  hasActiveBackgroundWork(parentSessionID: string, graceMs = 60_000): boolean {
-    const now = Date.now()
+  hasActiveBackgroundWork(parentSessionID: string): boolean {
     for (const task of this.tasks.values()) {
       if (task.parentSessionID !== parentSessionID) continue
-      if (task.status === "running") return true
-      const finishedAt = task.completedAt?.getTime()
-      if (finishedAt !== undefined && now - finishedAt < graceMs) return true
+      if (task.status === "running" || task.claiming) return true
     }
     return false
+  }
+
+  /**
+   * Commits the notified-dedup flag and releases the claim. Deliberately
+   * separate from getCompletionStatusForSession: marking inside that getter
+   * burned the one-shot before delivery was known to have succeeded, so a
+   * dropped notification (e.g. session.prompt failing) meant results were
+   * never announced and never retried. Callers mark only after a confirmed
+   * successful send, which restores retry on the next idle.
+   */
+  markNotified(tasks: readonly BackgroundTask[]): void {
+    for (const task of tasks) {
+      const existing = this.tasks.get(task.id)
+      if (existing) {
+        existing.notified = true
+        existing.claiming = false
+      }
+    }
+  }
+
+  /**
+   * Releases the claim without marking notified, restoring the tasks to
+   * getCompletionStatusForSession's next caller. Callers invoke this when a
+   * delivery attempt fails (or when nobody is registered to attempt one at
+   * all), so the batch isn't stuck "claiming" forever — which would also wedge
+   * hasActiveBackgroundWork permanently "on" for that session.
+   */
+  releaseClaim(tasks: readonly BackgroundTask[]): void {
+    for (const task of tasks) {
+      const existing = this.tasks.get(task.id)
+      if (existing) existing.claiming = false
+    }
   }
 
   listAllTasks(): BackgroundTask[] {

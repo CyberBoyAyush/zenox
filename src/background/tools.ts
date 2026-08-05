@@ -110,6 +110,10 @@ Use if a task is no longer needed or taking too long.`,
       const notification = manager.getCompletionStatusForSession(context.sessionID)
       if (notification?.allComplete) {
         output += `\n\n${notification.message}`
+        // Delivered by returning it here, so the dedup flag is safe to commit
+        // immediately — a tool's return value can't silently fail to reach
+        // the caller the way an async session.prompt() send can.
+        manager.markNotified(notification.completedTasks)
       }
 
       return output

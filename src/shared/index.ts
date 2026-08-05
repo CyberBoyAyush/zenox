@@ -11,3 +11,4 @@ export {
   createFirstMessageVariantGate,
   type FirstMessageVariantGate,
 } from "./first-message-variant"
+export { withTimeout } from "./with-timeout"

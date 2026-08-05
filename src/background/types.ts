@@ -25,6 +25,15 @@ export interface BackgroundTask {
   parentModel?: ParentModel // Model that was active when task was launched
   /** True once this finished task has been included in an "ALL COMPLETE" notification. */
   notified?: boolean
+  /**
+   * True from the moment this task is claimed into a batch by
+   * getCompletionStatusForSession until the caller confirms delivery
+   * (markNotified) or reports failure (releaseClaim). Prevents a second
+   * concurrent caller from claiming the same task while the first caller's
+   * delivery is still in flight, and doubles as the "notification currently
+   * being delivered" signal for hasActiveBackgroundWork.
+   */
+  claiming?: boolean
 }
 
 export interface LaunchInput {

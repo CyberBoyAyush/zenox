@@ -14,6 +14,7 @@ import { READ_ONLY_TOOLS } from "../src/agents/tool-policy"
 import { ZenoxConfigSchema } from "../src/config"
 import { ORCHESTRATION_PROMPT } from "../src/orchestration/prompt"
 import { createKeywordDetectorHook } from "../src/hooks"
+import ZenoxPlugin from "../src/index"
 
 function createMockClient(opts: { neverResolvePrompt?: boolean } = {}): OpencodeClient {
   let counter = 0
@@ -189,20 +190,54 @@ describe("background task timeout", () => {
 })
 
 describe("notification double-fire fix", () => {
-  test("calling getCompletionStatusForSession again after all-complete does not resend", async () => {
+  test("re-querying after a delivered report returns null", async () => {
     const manager = new BackgroundManager()
     const client = createMockClient()
 
     const a = await launch(manager, client, "notif-session", "task a")
 
-    // handleSessionIdle itself returns (and consumes) the all-complete notification.
     const first = manager.handleSessionIdle(a.sessionID)
     expect(first?.allComplete).toBe(true)
     expect(first?.completedTasks.map((t) => t.id)).toEqual([a.id])
+    // The caller (e.g. sendCompletionNotification) commits the flag only
+    // after a successful send.
+    manager.markNotified(first!.completedTasks)
 
-    // Calling it again manually must find nothing new to report (a is now notified).
     const second = manager.getCompletionStatusForSession("notif-session")
     expect(second).toBeNull()
+  })
+
+  test("a claimed-but-undelivered batch is invisible to a second caller until released", async () => {
+    const manager = new BackgroundManager()
+    const client = createMockClient()
+
+    const a = await launch(manager, client, "notif-session-undelivered", "task a")
+    const first = manager.handleSessionIdle(a.sessionID)
+    expect(first?.allComplete).toBe(true)
+
+    // While "delivery" is in flight (claimed, not yet confirmed or released),
+    // a second concurrent caller must not also grab this batch.
+    expect(manager.getCompletionStatusForSession("notif-session-undelivered")).toBeNull()
+    expect(manager.hasActiveBackgroundWork("notif-session-undelivered")).toBe(true)
+  })
+
+  test("an undelivered report is available again after the claim is released (self-heal)", async () => {
+    const manager = new BackgroundManager()
+    const client = createMockClient()
+
+    const a = await launch(manager, client, "notif-session-released", "task a")
+    const first = manager.handleSessionIdle(a.sessionID)
+    expect(first?.allComplete).toBe(true)
+
+    // Simulate a failed send: releaseClaim() is exactly what
+    // sendCompletionNotification calls when session.prompt() throws.
+    manager.releaseClaim(first!.completedTasks)
+    expect(manager.hasActiveBackgroundWork("notif-session-released")).toBe(false)
+
+    const retry = manager.getCompletionStatusForSession("notif-session-released")
+    expect(retry?.allComplete).toBe(true)
+    expect(retry?.completedTasks.map((t) => t.id)).toEqual([a.id])
+    expect(retry?.message).toContain("task a")
   })
 
   test("a still-unnotified task remains reportable across a partial notification, then gets folded into the final all-complete list exactly once", async () => {
@@ -220,9 +255,113 @@ describe("notification double-fire fix", () => {
     const final = manager.handleSessionIdle(b.sessionID)
     expect(final?.allComplete).toBe(true)
     expect(final?.completedTasks.map((t) => t.id).sort()).toEqual([a.id, b.id].sort())
+    manager.markNotified(final!.completedTasks)
 
     // A further manual call must find nothing left to report.
     expect(manager.getCompletionStatusForSession("notif-session-2")).toBeNull()
+  })
+
+  test("a cancelled task is annotated, not presented as a fetchable result", async () => {
+    const manager = new BackgroundManager()
+    const client = createMockClient()
+
+    const task = await launch(manager, client, "notif-cancel-only", "aborted work")
+    await manager.cancel(client, task.id)
+
+    const summary = manager.getCompletionStatusForSession("notif-cancel-only")
+    expect(summary?.message).toContain("aborted work")
+    expect(summary?.message).toContain("— cancelled")
+    // Nothing produced output, so the agent must not be told to retrieve results.
+    expect(summary?.message).not.toContain("background_output(task_id=")
+    expect(summary?.message).toContain("Handle this work yourself")
+  })
+
+  test("a mixed wave still points at the results that actually exist", async () => {
+    const manager = new BackgroundManager()
+    const client = createMockClient()
+
+    const good = await launch(manager, client, "notif-mixed", "real findings")
+    const bad = await launch(manager, client, "notif-mixed", "abandoned")
+    manager.handleSessionIdle(good.sessionID)
+    await manager.cancel(client, bad.id)
+
+    const summary = manager.getCompletionStatusForSession("notif-mixed")
+    expect(summary?.allComplete).toBe(true)
+    expect(summary?.message).toContain("background_output(task_id=")
+    expect(summary?.message).toContain("abandoned (explorer) — cancelled")
+    expect(summary?.message).toContain("real findings (explorer)\n")
+  })
+})
+
+/**
+ * Regression guard for the terminal stall: a parent that synthesizes results
+ * and goes idle used to hit a fixed suppression window (60s, later 15s) after
+ * a task finished. Since the todo enforcer only fires on session.idle
+ * (edge-triggered, not polled), any synthesis turn faster than the window
+ * still lost its only idle edge and stalled the todo list until the user
+ * typed — a shorter timer only reduced how often it happened. Suppression is
+ * now tied to the actual claim/delivery lifecycle instead of a guessed
+ * duration, so elapsed time since completion is irrelevant.
+ */
+describe("hasActiveBackgroundWork is state-based, not time-based", () => {
+  test("an unclaimed, already-notified task never suppresses regardless of elapsed time", async () => {
+    const manager = new BackgroundManager()
+    const client = createMockClient()
+
+    const task = await launch(manager, client, "state-session", "done")
+    const notification = manager.handleSessionIdle(task.sessionID)
+    manager.markNotified(notification!.completedTasks)
+
+    // Even "just now" (elapsed time is irrelevant once notified+unclaimed).
+    expect(manager.hasActiveBackgroundWork("state-session")).toBe(false)
+
+    const stored = manager.getTask(task.id)!
+    stored.completedAt = new Date(Date.now() - 1_000_000)
+    expect(manager.hasActiveBackgroundWork("state-session")).toBe(false)
+  })
+
+  test("a claimed (in-flight delivery) batch suppresses the enforcer", async () => {
+    const manager = new BackgroundManager()
+    const client = createMockClient()
+
+    const task = await launch(manager, client, "state-session-2", "done")
+    manager.handleSessionIdle(task.sessionID) // claims, does not confirm or release
+
+    expect(manager.hasActiveBackgroundWork("state-session-2")).toBe(true)
+  })
+
+  test("releasing the claim (failed delivery) immediately un-suppresses", async () => {
+    const manager = new BackgroundManager()
+    const client = createMockClient()
+
+    const task = await launch(manager, client, "state-session-3", "done")
+    const notification = manager.handleSessionIdle(task.sessionID)
+    expect(manager.hasActiveBackgroundWork("state-session-3")).toBe(true)
+
+    manager.releaseClaim(notification!.completedTasks)
+    expect(manager.hasActiveBackgroundWork("state-session-3")).toBe(false)
+  })
+
+  test("running tasks always suppress it", async () => {
+    const manager = new BackgroundManager()
+    const client = createMockClient({ neverResolvePrompt: true })
+
+    await launch(manager, client, "state-session-4", "still going")
+    expect(manager.hasActiveBackgroundWork("state-session-4")).toBe(true)
+  })
+
+  test("a second caller cannot claim a batch that is already claimed", async () => {
+    const manager = new BackgroundManager()
+    const client = createMockClient()
+
+    const task = await launch(manager, client, "state-session-5", "done")
+    const first = manager.handleSessionIdle(task.sessionID)
+    expect(first?.allComplete).toBe(true)
+
+    // Simulates a second, racing caller (e.g. background_cancel for a
+    // different task in the same session) trying to grab the same batch
+    // while the first caller's delivery is still in flight.
+    expect(manager.getCompletionStatusForSession("state-session-5")).toBeNull()
   })
 })
 
@@ -335,18 +474,19 @@ describe("detachParentSession aborts running children", () => {
 })
 
 describe("hasActiveBackgroundWork (todo-enforcer integration)", () => {
-  test("true while a task is running, false once finished and past the grace window", async () => {
+  test("true while running, true while claimed pending delivery, false once notified", async () => {
     const manager = new BackgroundManager()
     const client = createMockClient()
 
     const task = await launch(manager, client, "enforcer-session")
     expect(manager.hasActiveBackgroundWork("enforcer-session")).toBe(true)
 
-    manager.handleSessionIdle(task.sessionID)
-    // Still within the default 60s grace window.
+    const notification = manager.handleSessionIdle(task.sessionID)
+    // Claimed, delivery not yet confirmed.
     expect(manager.hasActiveBackgroundWork("enforcer-session")).toBe(true)
-    // Outside a much shorter custom grace window.
-    expect(manager.hasActiveBackgroundWork("enforcer-session", 0)).toBe(false)
+
+    manager.markNotified(notification!.completedTasks)
+    expect(manager.hasActiveBackgroundWork("enforcer-session")).toBe(false)
   })
 
   test("false for a session with no background tasks", () => {
@@ -408,5 +548,77 @@ describe("blueprint keyword", () => {
     expect(output.parts[0]?.text).toContain("BLUEPRINT MODE")
     expect(output.parts[0]?.text).toContain('Done when:')
     expect(toasts.at(-1)?.title).toBe("📐 Blueprint Mode")
+  })
+})
+
+describe("plugin-level: undelivered notification retries on the next idle", () => {
+  test("a failed session.prompt delivery is retried when the parent session goes idle again", async () => {
+    const PARENT_SESSION = "parent-retry-test"
+    let childSessionCounter = 0
+    let notificationPromptAttempts = 0
+    let firstAttemptFailed = false
+    let secondAttemptDelivered = false
+
+    const client = {
+      session: {
+        create: async () => ({ data: { id: `child_${++childSessionCounter}` } }),
+        prompt: async ({ body }: { path: { id: string }; body: { parts: Array<{ text?: string }> } }) => {
+          const text = body.parts?.[0]?.text ?? ""
+          if (text.includes("ALL BACKGROUND TASKS COMPLETE")) {
+            notificationPromptAttempts++
+            if (notificationPromptAttempts === 1) {
+              firstAttemptFailed = true
+              throw new Error("simulated transient network failure")
+            }
+            secondAttemptDelivered = true
+          }
+          // Launching the background task itself, or any other prompt call.
+          return { data: {} }
+        },
+        abort: async () => ({ data: {} }),
+        messages: async () => ({ data: [] }),
+      },
+      tui: {
+        showToast: async () => true,
+      },
+    }
+
+    const plugin = await ZenoxPlugin({
+      client,
+      directory: "/tmp/zenox-retry-test",
+      worktree: "/tmp/zenox-retry-test",
+      project: { id: "test-project" },
+      serverUrl: new URL("http://localhost:4096"),
+      $: {} as never,
+    } as never)
+
+    // Launch a background task from the parent session.
+    const launchResult = await plugin.tool?.background_task.execute(
+      { agent: "explorer", description: "find something", prompt: "..." },
+      { sessionID: PARENT_SESSION, agent: "build" } as never
+    )
+    expect(String(launchResult)).toContain("launched successfully")
+
+    const childSessionID = "child_1"
+
+    // The child session goes idle (task completes) -> notification delivery
+    // is attempted and fails (first prompt call throws).
+    await plugin.event?.({
+      event: { type: "session.idle", properties: { sessionID: childSessionID } } as never,
+    })
+    expect(firstAttemptFailed).toBe(true)
+    expect(secondAttemptDelivered).toBe(false)
+
+    // Some unrelated later moment: the PARENT session itself goes idle (e.g.
+    // it was doing other work). The retry-on-next-idle path must pick up the
+    // still-unclaimed all-complete batch and re-attempt delivery.
+    await plugin.event?.({
+      event: { type: "session.idle", properties: { sessionID: PARENT_SESSION } } as never,
+    })
+
+    expect(notificationPromptAttempts).toBe(2)
+    expect(secondAttemptDelivered).toBe(true)
+
+    await plugin.dispose?.()
   })
 })

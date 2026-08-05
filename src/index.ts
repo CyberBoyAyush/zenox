@@ -48,6 +48,7 @@ import {
   resolveAgentVariant,
   applyAgentVariant,
   createFirstMessageVariantGate,
+  withTimeout,
   type VariantMessage,
 } from "./shared"
 
@@ -81,13 +82,17 @@ const ZenoxPlugin: Plugin = async (ctx) => {
   // that session's live agent/model at send time (avoids stale Plan/Build).
   const sendCompletionNotification = async (notification: CompletionNotification) => {
     const targetSessionID = notification.parentSessionID
-    if (!targetSessionID) return
+    if (!targetSessionID) {
+      // Should not happen in practice, but never leave a claimed batch stuck.
+      backgroundManager.releaseClaim(notification.completedTasks)
+      return
+    }
 
     const liveContext = getSessionContext(targetSessionID)
     const targetAgent = liveContext?.agent ?? notification.parentAgent
     const targetModel = liveContext?.model ?? notification.parentModel
 
-    const send = async (omitContext = false) => {
+    const send = async (omitContext = false): Promise<boolean> => {
       try {
         await ctx.client.session.prompt({
           path: { id: targetSessionID },
@@ -98,6 +103,7 @@ const ZenoxPlugin: Plugin = async (ctx) => {
             parts: [{ type: "text", text: notification.message }],
           },
         })
+        return true
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err)
         if (
@@ -106,10 +112,33 @@ const ZenoxPlugin: Plugin = async (ctx) => {
         ) {
           return send(true)
         }
-        // Silently ignore other errors
+        console.error(
+          `[zenox] could not deliver background completion to ${targetSessionID}: ${errorMsg}`
+        )
+        return false
       }
     }
-    await send()
+
+    // Bound the delivery attempt: if session.prompt() hangs (network stall,
+    // unresponsive server) rather than resolving or rejecting, an unbounded
+    // await would leave the claim (and hasActiveBackgroundWork) stuck "on"
+    // for this session forever. Racing a timeout treats a hang as a failure
+    // so the claim is released and the next idle can retry. The abandoned
+    // call is never awaited further here, so a very late real success is
+    // simply not acted upon a second time by this call — at worst the
+    // message is delivered twice (once late by the original call, once by
+    // the retry), never zero times.
+    const DELIVERY_TIMEOUT_MS = 30_000
+
+    // Only confirm the claim once the agent has actually been told. If the
+    // send failed, release it so the next idle re-attempts delivery (see the
+    // session.idle handler below) instead of leaving it stuck "claiming".
+    const delivered = await withTimeout(send(), DELIVERY_TIMEOUT_MS, false)
+    if (delivered && notification.allComplete) {
+      backgroundManager.markNotified(notification.completedTasks)
+    } else if (!delivered) {
+      backgroundManager.releaseClaim(notification.completedTasks)
+    }
   }
 
   // A failed launch never emits session.idle, so the manager pushes its
@@ -294,7 +323,34 @@ const ZenoxPlugin: Plugin = async (ctx) => {
           return
         }
 
-        // Run todo enforcer for main session idle (not background tasks)
+        // Not a child task's own idle — but this session might own an
+        // earlier all-complete batch whose delivery failed (claim was
+        // released, not confirmed). Retry it on this idle rather than
+        // waiting for unrelated new background work to surface it again.
+        // Scoped to allComplete only: a partial ("N still running") batch is
+        // never claimed and would otherwise resend on every unrelated idle
+        // while the fan-out is in flight.
+        const pending = backgroundManager.getCompletionStatusForSession(sessionID)
+        if (pending?.allComplete) {
+          await sendCompletionNotification(pending)
+          return
+        }
+
+        // KNOWN NARROW RACE (accepted trade-off, not fully closed): if this
+        // session happens to go idle for an unrelated reason during the
+        // brief window a *different* delivery attempt has it claimed
+        // (typically a single HTTP round-trip), this idle edge is suppressed
+        // by hasActiveBackgroundWork and the enforcer below is skipped for
+        // it. If that in-flight delivery then fails AND the session never
+        // goes idle again on its own, the todo list could still stall. This
+        // requires a delivery failure to coincide with an idle edge within a
+        // sub-second window, which is far narrower than the original bug
+        // (any normal-speed synthesis turn) — closing it fully would need an
+        // explicit "idle occurred while claimed" latch replayed once the
+        // claim resolves. Not implemented: the residual probability is very
+        // low and the added complexity (a second state machine cross-cutting
+        // BackgroundManager and this event handler) was judged not worth it
+        // for this pass.
         await todoEnforcerHook.event(input)
       }
     },
