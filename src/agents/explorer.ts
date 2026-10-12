@@ -1,5 +1,5 @@
-import type { AgentConfig } from "@opencode-ai/sdk"
-import { READ_ONLY_TOOLS } from "./tool-policy"
+import type { ZenoxAgentDefinition } from "./types"
+import { READ_ONLY_PERMISSIONS } from "./tool-policy"
 
 const EXPLORER_PROMPT = `You are a codebase search specialist. Your job: find files and code, return actionable results.
 
@@ -51,13 +51,11 @@ If nothing is found, keep \`<files>\` empty and explain which terms and variants
 ## Tool Strategy
 
 Use the right tool for the job:
-- **Symbol lookup** (where is a function/class/type defined): find_symbols (LSP-backed, precise) — prefer this over grep for "where is X defined?"
-- **Symbol fallback**: if symbol lookup misses, search imports, re-exports, aliases, symbol stems, and common naming variants with grep
+- **Symbol lookup** (where is a function/class/type defined): grep for the declaration, then search imports, re-exports, aliases, symbol stems, and common naming variants with grep
 - **Structural text patterns** (function names, classes, key symbols): grep  
 - **Text patterns** (strings, comments, logs): grep
 - **File patterns** (find by name/extension): glob
 - **External examples** (how others implement): grep_app_searchGitHub (searches millions of GitHub repos)
-- **LSP availability check**: lsp_status (confirm code intelligence is active for the project's language)
 
 Read the key matches to confirm they are relevant and include line ranges when available. Distinguish definitions from call sites and re-exports.
 
@@ -84,24 +82,14 @@ grep_app_searchGitHub searches millions of public GitHub repos instantly — use
 - **No file creation**: Report findings as message text, never write files
 `
 
-export const explorerAgent: AgentConfig = {
+export const explorerAgent: ZenoxAgentDefinition = {
   description: `Contextual grep for codebases. Answers "Where is X?", "Which file has Y?", 
 "Find the code that does Z". Fire multiple in parallel for broad searches.
 Specify thoroughness: "quick" for basic, "medium" for moderate, 
 "very thorough" for comprehensive analysis.`,
   mode: "subagent",
-  model: "anthropic/claude-haiku-4-5",
+  model: "anthropic/claude-haiku-5-5",
   color: "#3B82F6",
-  temperature: 0.1,
-  tools: {
-    ...READ_ONLY_TOOLS,
-    read: true,
-    glob: true,
-    grep: true,
-    list: true,
-    find_symbols: true,
-    lsp_status: true,
-    "grep_app_*": true,
-  },
-  prompt: EXPLORER_PROMPT,
+  permissions: READ_ONLY_PERMISSIONS,
+  system: EXPLORER_PROMPT,
 }

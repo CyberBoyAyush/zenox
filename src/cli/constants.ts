@@ -24,7 +24,7 @@ export const AGENTS: AgentInfo[] = [
   {
     name: "librarian",
     displayName: "Librarian",
-    defaultModel: "anthropic/claude-sonnet-4-6",
+    defaultModel: "anthropic/claude-sonnet-5-5",
     description: "Open-source research agent",
   },
   {
@@ -49,7 +49,7 @@ export const AGENTS: AgentInfo[] = [
 
 export const DEFAULT_MODELS: Record<AgentName, string> = {
   explorer: "anthropic/claude-haiku-4-5",
-  librarian: "anthropic/claude-sonnet-4-6",
+  librarian: "anthropic/claude-sonnet-5-5",
   oracle: "openai/gpt-5.6-sol",
   "ui-planner": "anthropic/claude-opus-4-8",
   inspector: "anthropic/claude-sonnet-5",

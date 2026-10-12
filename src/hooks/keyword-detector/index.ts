@@ -5,31 +5,18 @@
  * 1. Injects mode-specific context into the message
  * 2. Shows toast notification for user feedback
  *
- * Uses the "chat.message" hook which fires when user submits a message.
+ * Uses the V2 `session.hook("prompt")` admission hook.
  */
 
-import type { PluginInput } from "@opencode-ai/plugin"
-import type { VariantMessage } from "../../shared"
+import type { ToastSink } from "../../shared/toast"
 import { KEYWORD_CONFIGS, type KeywordConfig } from "./contexts"
 
 const TOAST_DURATION = 4000
 
-interface MessagePart {
-  type: string
-  text?: string
-  synthetic?: boolean
-}
-
-interface ChatMessageOutput {
-  parts: MessagePart[]
-  message: VariantMessage
-}
-
-function extractTextFromParts(parts: MessagePart[]): string {
-  return parts
-    .filter((p) => p.type === "text" && p.text)
-    .map((p) => p.text ?? "")
-    .join(" ")
+/** The mutable slice of a V2 `session.hook("prompt")` event this hook needs. */
+export interface KeywordPromptEvent {
+  readonly sessionID: string
+  prompt: { text: string }
 }
 
 function removeCodeBlocks(text: string): string {
@@ -49,61 +36,40 @@ function detectKeywords(text: string): KeywordConfig[] {
   return detected
 }
 
-export function createKeywordDetectorHook(ctx: PluginInput) {
+export function createKeywordDetectorHook(toast: ToastSink) {
   const detectedSessions = new Set<string>()
 
-  return {
-    "chat.message": async (
-      input: { sessionID: string; agent?: string },
-      output: ChatMessageOutput
-    ): Promise<void> => {
-      const promptText = extractTextFromParts(output.parts)
-      const detectedKeywords = detectKeywords(promptText)
+  /** Runs on prompt admission; appends the mode context to the prompt text. */
+  return (event: KeywordPromptEvent): void => {
+    const detectedKeywords = detectKeywords(event.prompt.text)
+    if (detectedKeywords.length === 0) return
 
-      if (detectedKeywords.length === 0) return
+    // Prevent duplicate injection of the same mode(s) in one session
+    const sessionKey = `${event.sessionID}-${detectedKeywords.map((k) => k.type).join("-")}`
+    if (detectedSessions.has(sessionKey)) return
+    detectedSessions.add(sessionKey)
 
-      // Prevent duplicate detection in same session
-      const sessionKey = `${input.sessionID}-${detectedKeywords.map((k) => k.type).join("-")}`
-      if (detectedSessions.has(sessionKey)) return
-      detectedSessions.add(sessionKey)
+    // Highest priority keyword wins (config order)
+    const primaryKeyword = detectedKeywords[0]
 
-      // Get highest priority keyword (ultrawork > deep-research > explore)
-      const primaryKeyword = detectedKeywords[0]
+    // Appending keeps any attachment mention offsets in the original text valid.
+    event.prompt.text = event.prompt.text
+      ? `${event.prompt.text}\n\n${primaryKeyword.context}`
+      : primaryKeyword.context
 
-      // Inject context by appending to existing text part or adding new one
-      const textPartIndex = output.parts.findIndex((p) => p.type === "text" && p.text)
-      
-      if (textPartIndex >= 0) {
-        // Append context to existing text part
-        const existingPart = output.parts[textPartIndex]
-        existingPart.text = `${existingPart.text ?? ""}\n\n${primaryKeyword.context}`
-      } else {
-        // Add new text part if none exists
-        output.parts.push({
-          type: "text",
-          text: primaryKeyword.context,
-          synthetic: true,
-        })
-      }
+    toast({
+      title: primaryKeyword.toast.title,
+      message: primaryKeyword.toast.message,
+      variant: "success",
+      duration: TOAST_DURATION,
+      sessionID: event.sessionID,
+    })
 
-      // Show toast notification
-      await ctx.client.tui
-        .showToast({
-          body: {
-            title: primaryKeyword.toast.title,
-            message: primaryKeyword.toast.message,
-            variant: "success",
-            duration: TOAST_DURATION,
-          },
-        })
-        .catch(() => {})
-
-      // Clean up old session keys periodically (prevent memory leak)
-      if (detectedSessions.size > 100) {
-        const entries = [...detectedSessions]
-        entries.slice(0, 50).forEach((key) => detectedSessions.delete(key))
-      }
-    },
+    // Bound memory
+    if (detectedSessions.size > 100) {
+      const entries = [...detectedSessions]
+      entries.slice(0, 50).forEach((key) => detectedSessions.delete(key))
+    }
   }
 }
 

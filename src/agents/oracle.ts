@@ -1,5 +1,5 @@
-import type { AgentConfig } from "@opencode-ai/sdk"
-import { READ_ONLY_TOOLS } from "./tool-policy"
+import type { ZenoxAgentDefinition } from "./types"
+import { READ_ONLY_PERMISSIONS } from "./tool-policy"
 
 const ORACLE_PROMPT = `You are a strategic technical advisor with deep reasoning capabilities, operating as a specialized consultant within an AI-assisted development environment.
 
@@ -68,8 +68,7 @@ This helps you break down complex problems systematically and avoid missing edge
 ## Grounding Your Analysis (architecture & debugging only)
 
 For architecture decisions, debugging, and refactoring tasks (NOT code review):
-- Use \`find_symbols\` to locate the exact definitions involved before reasoning about them, rather than assuming structure.
-- Use \`session_search\` to check whether a similar decision or bug was already resolved in a past session — reuse prior conclusions instead of re-deriving them.
+- Use grep/glob/read to locate the exact definitions involved before reasoning about them, rather than assuming structure.
 
 - If initial search is inconclusive, gather targeted context rather than assume. Distinguish observed facts, inferences, and material unknowns.
 - For ambiguous debugging, keep plausible causes open until focused evidence supports one explanation and a validation path.
@@ -124,7 +123,7 @@ Structure your review response as:
 - Skip sequential-thinking for code reviews — it is overkill. Reserve it for architecture and debugging tasks only.
 `
 
-export const oracleAgent: AgentConfig = {
+export const oracleAgent: ZenoxAgentDefinition = {
   description: `Expert technical advisor with deep reasoning for architecture decisions, 
 code analysis, debugging strategy, and engineering guidance. Use for 
 design reviews, complex debugging, technical trade-offs, refactoring 
@@ -132,19 +131,8 @@ roadmaps, and strategic technical decisions. Also use for code review
 and self-review after completing significant implementations — it will 
 surface critical issues, security concerns, and regressions.`,
   mode: "subagent",
-  model: "openai/gpt-5.6-sol",
-  variant: "medium",
+  model: "openai/gpt-5.6-sol#medium",
   color: "#F59E0B",
-  temperature: 0.1,
-  tools: {
-    ...READ_ONLY_TOOLS,
-    read: true,
-    glob: true,
-    grep: true,
-    list: true,
-    find_symbols: true,
-    session_search: true,
-    "sequential-thinking_*": true,
-  },
-  prompt: ORACLE_PROMPT,
+  permissions: READ_ONLY_PERMISSIONS,
+  system: ORACLE_PROMPT,
 }

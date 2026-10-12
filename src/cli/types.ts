@@ -12,9 +12,12 @@ export interface ProviderConfig {
   models?: Record<string, ModelConfig>
 }
 
+/** V2 plugin entry: a package spec or `{ package, options }`. */
+export type PluginEntry = string | { package: string; options?: Record<string, unknown> }
+
 export interface OpencodeConfig {
-  plugins?: string[]
-  plugin?: string[]  // OpenCode standard (singular)
+  plugins?: PluginEntry[] // OpenCode V2
+  plugin?: PluginEntry[]  // OpenCode V1 key (still read by V2)
   model?: string     // Default model in provider/model format
   small_model?: string
   provider?: Record<string, ProviderConfig>

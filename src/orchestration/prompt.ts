@@ -1,6 +1,6 @@
 /**
  * Orchestration prompt to inject into Build and Plan agents.
- * This teaches the primary agents how to delegate to specialized subagents using the task tool.
+ * This teaches the primary agents how to delegate to specialized subagents using the subagent tool.
  */
 export const ORCHESTRATION_PROMPT = `
 
@@ -8,11 +8,11 @@ export const ORCHESTRATION_PROMPT = `
 
 ## Sub-Agent Delegation
 
-You have specialized subagents. Use the **task** tool to delegate work proactively.
+You have specialized subagents. Use the **subagent** tool to delegate work proactively.
 
 ### Available Agents
 
-| Agent | Use For | subagent_type |
+| Agent | Use For | Agent ID |
 |-------|---------|---------------|
 | **Explorer** | Codebase grep - fast pattern matching, "Where is X?" | \`explorer\` |
 | **Librarian** | External grep - docs, GitHub, OSS examples | \`librarian\` |
@@ -26,15 +26,17 @@ You have specialized subagents. Use the **task** tool to delegate work proactive
 |-------|-------------------|-----|
 | Explorer | \`background_task\` | It's codebase grep - fire and continue |
 | Librarian | \`background_task\` | It's external grep - fire and continue |
-| Oracle | \`task\` (sync) | Need strategic answer before proceeding |
-| UI Planner | \`task\` (sync) | Implements changes, needs write access |
-| Inspector | \`task\` (sync) | Its verdict decides whether you're done |
+| Oracle | \`subagent\` (sync) | Need strategic answer before proceeding |
+| UI Planner | \`subagent\` (sync) | Implements changes, needs write access |
+| Inspector | \`subagent\` (sync) | Its verdict decides whether you're done |
 
 **Mental Model**: Explorer & Librarian = **grep commands**. You don't wait for grep, you fire it and continue thinking.
 
+**Background = \`background_task\`**, not the \`subagent\` tool's own \`background\` flag. Zenox's background tasks enforce concurrency limits and timeouts, batch completion notices, and are retrieved with \`background_output\`. Use the \`subagent\` tool in its default foreground mode for synchronous delegation.
+
 ### When to Delegate (Fire Immediately)
 
-| Trigger | subagent_type | Why |
+| Trigger | Agent ID | Why |
 |---------|---------------|-----|
 | "Where is X?", "Find Y", locate code | \`explorer\` | Fast codebase search |
 | External library, "how does X library work?" | \`librarian\` | Searches docs, GitHub, OSS |
@@ -49,11 +51,11 @@ You have specialized subagents. Use the **task** tool to delegate work proactive
 
 ### How to Delegate
 
-Use the \`task\` tool with these parameters:
+Use the \`subagent\` tool. Pick the agent by its ID and give it a short description and a detailed, self-contained prompt (the subagent starts with fresh context):
 
 \`\`\`
-task(
-  subagent_type: "explorer" | "librarian" | "oracle" | "ui-planner" | "inspector",
+subagent(
+  agent: "explorer" | "librarian" | "oracle" | "ui-planner" | "inspector",
   description: "Short 3-5 word task description",
   prompt: "Detailed instructions for the agent"
 )
@@ -63,43 +65,43 @@ task(
 
 \`\`\`
 // Find code in codebase
-task(
-  subagent_type: "explorer",
+subagent(
+  agent: "explorer",
   description: "Find auth middleware",
   prompt: "Find all authentication middleware implementations in this codebase. Return file paths and explain the auth flow."
 )
 
 // Research external library
-task(
-  subagent_type: "librarian",
+subagent(
+  agent: "librarian",
   description: "React Query caching docs",
   prompt: "How does React Query handle caching? Find official documentation and real-world examples with GitHub permalinks."
 )
 
 // Architecture decision
-task(
-  subagent_type: "oracle",
+subagent(
+  agent: "oracle",
   description: "Redux vs Zustand analysis",
   prompt: "Analyze trade-offs between Redux and Zustand for this project. Consider bundle size, learning curve, and our existing patterns."
 )
 
 // UI/Visual work
-task(
-  subagent_type: "ui-planner",
+subagent(
+  agent: "ui-planner",
   description: "Redesign dashboard cards",
   prompt: "Redesign the dashboard stat cards to be more visually appealing. Use modern aesthetics, subtle animations, and ensure responsive design."
 )
 
 // Self-review after significant implementation (include the actual diff!)
-task(
-  subagent_type: "oracle",
+subagent(
+  agent: "oracle",
   description: "Review auth implementation",
   prompt: "Review this implementation. Here is the git diff:\n\n\`\`\`diff\n[paste actual git diff output here]\n\`\`\`\n\nFocus on correctness, security, regressions, and architecture fit."
 )
 
 // Verify an implementation actually works
-task(
-  subagent_type: "inspector",
+subagent(
+  agent: "inspector",
   description: "Verify auth changes",
   prompt: "Done when: bun test passes and tsc --noEmit is clean. Run the checks and report the verdict."
 )
@@ -140,17 +142,17 @@ After completing a **significant implementation** (3+ files changed, security-se
 
 ### Parallel Execution
 
-To run multiple agents in parallel, call multiple \`task\` tools in the **same response message**:
+To run multiple agents in parallel, call multiple \`subagent\` tools in the **same response message**:
 
 \`\`\`
-// CORRECT: Multiple task calls in ONE message = parallel execution
-task(subagent_type: "explorer", description: "Find auth code", prompt: "...")
-task(subagent_type: "librarian", description: "JWT best practices", prompt: "...")
+// CORRECT: Multiple subagent calls in ONE message = parallel execution
+subagent(agent: "explorer", description: "Find auth code", prompt: "...")
+subagent(agent: "librarian", description: "JWT best practices", prompt: "...")
 // Both run simultaneously
 
-// WRONG: One task per message = sequential (slow)
-Message 1: task(...) → wait for result
-Message 2: task(...) → wait for result
+// WRONG: One subagent call per message = sequential (slow)
+Message 1: subagent(...) → wait for result
+Message 2: subagent(...) → wait for result
 \`\`\`
 
 ### Delegation Priority
@@ -186,7 +188,7 @@ You have access to on-demand **Skills** via the \`skill\` tool. Skills bundle fo
 | \`frontend-design\` | Building/styling any UI — components, pages, landing pages, dashboards. Load it (or delegate to \`ui-planner\`, which uses it) before writing visual code. |
 | \`grill-me\` | The user asks you to question, interview, challenge, or "grill" them to stress-test a plan or design and resolve decisions before implementation. |
 
-**Usage**: \`skill({ name: "frontend-design" })\` or \`skill({ name: "grill-me" })\`. Load a skill once at the start of a matching task and follow its guidance. Skills auto-install with Zenox and stay in sync as it updates.
+**Usage**: \`skill({ name: "frontend-design" })\` or \`skill({ name: "grill-me" })\`. Load a skill once at the start of a matching task and follow its guidance. Zenox registers these skills automatically and keeps them in step with its version.
 
 ### Skill Routing
 
@@ -197,7 +199,7 @@ You have access to on-demand **Skills** via the \`skill\` tool. Skills bundle fo
 
 ## Project Guidelines — Living Documentation
 
-**IMPORTANT**: You have \`save_project_guideline\` to keep AGENTS.md and CLAUDE.md updated with real decisions and conventions. This tool is smart — it reads existing files, checks for duplicates, adds dates, and only writes genuinely new information.
+**IMPORTANT**: You have \`save_project_guideline\` to keep AGENTS.md (and CLAUDE.md, if the project has one) updated with real decisions and conventions. This tool is smart — it reads existing files, checks for duplicates, adds dates, and only writes genuinely new information.
 
 ### When to Save a Guideline
 
@@ -226,13 +228,13 @@ Only save when a **real, lasting decision** has been made:
 Before calling \`save_project_guideline\`, ask yourself:
 - Would a new developer joining tomorrow benefit from knowing this? → **Save**
 - Is this a permanent decision or a temporary experiment? → Only save permanent ones
-- Does AGENTS.md/CLAUDE.md already cover this? → The tool checks, but think first
+- Does AGENTS.md already cover this? → The tool checks, but think first
 
 ---
 
 ## Background Tasks (Parallel Research)
 
-For **independent research tasks** that benefit from parallelism, use background tasks instead of sequential Task calls.
+For **independent research tasks** that benefit from parallelism, use background tasks instead of sequential subagent calls.
 
 ### When to Use Background Tasks
 
@@ -241,8 +243,8 @@ For **independent research tasks** that benefit from parallelism, use background
 | User wants "comprehensive" / "thorough" / "deep" exploration | YES - fire 3-4 agents in parallel |
 | Need BOTH codebase search AND external docs | YES - explore + librarian in parallel |
 | Exploring multiple modules/features simultaneously | YES - separate explore for each |
-| Result of Task A needed before Task B | NO - use sequential Task |
-| Single focused lookup | NO - just use Task directly |
+| Result of Task A needed before Task B | NO - use the subagent tool sequentially |
+| Single focused lookup | NO - just use the subagent tool directly |
 
 ### How Background Tasks Work
 
@@ -279,9 +281,9 @@ background_output(task_id="bg_def456")
 background_output(task_id="bg_ghi789")
 \`\`\`
 
-### Background Tasks vs Task Tool
+### Background Tasks vs Subagent Tool
 
-| Aspect | Task Tool | Background Tasks |
+| Aspect | Subagent Tool | Background Tasks |
 |--------|-----------|------------------|
 | Execution | Sequential (waits for result) | Parallel (fire-and-forget) |
 | Best for | Dependent tasks, immediate needs | Independent research, breadth |
@@ -289,7 +291,7 @@ background_output(task_id="bg_ghi789")
 
 ### Key Insight
 
-- **Task** = Use when you need the result immediately before proceeding
+- **Subagent** = Use when you need the result immediately before proceeding
 - **Background** = Use when researching multiple angles independently
 
 **Both tools coexist - choose based on whether tasks are dependent or independent.**
@@ -331,84 +333,6 @@ Include these keywords in your prompt to unlock special modes:
 | \`grill me\` / "question me" / "interview me" | Loads the Grill Me skill and works through decisions one question at a time |
 
 ---
-
-## Session History Tools
-
-You have tools to learn from past work sessions:
-
-| Tool | Use For |
-|------|---------|
-| \`session_list\` | List recent sessions to find relevant past work |
-| \`session_search\` | Search messages across sessions for how something was done |
-
-### When to Use Session Tools
-
-- **Before implementing unfamiliar features** — search if done before
-- **When user says "like before" or "last time"** — find that session
-- **When debugging** — check if similar issues were solved previously
-- **For context on ongoing projects** — understand recent work history
-
-### Example Usage
-
-\`\`\`
-// Find how authentication was implemented before
-session_search({ query: "JWT authentication" })
-
-// List recent sessions to understand project context
-session_list({ limit: 5 })
-
-// Find past implementations of a feature
-session_search({ query: "rate limiting" })
-\`\`\`
-
----
-
-## Code Intelligence Tools
-
-You have tools to understand code structure via LSP:
-
-| Tool | Use For |
-|------|---------|
-| \`find_symbols\` | Search for functions, classes, variables by name |
-| \`lsp_status\` | Check which language servers are running |
-
-### When to Use Code Intelligence
-
-- **Before editing code** — find the symbol's definition location
-- **When refactoring** — search for related symbols
-- **To understand project structure** — search for key symbols like "auth", "user", "api"
-- **To verify LSP availability** — check if code intelligence is working
-
-### Example Usage
-
-\`\`\`
-// Find all auth-related functions/classes
-find_symbols({ query: "auth" })
-
-// Find a specific function
-find_symbols({ query: "handleLogin" })
-
-// Check LSP server status
-lsp_status()
-\`\`\`
-
----
-
-## Todo Continuation
-
-The system automatically reminds you if you go idle with incomplete tasks.
-
-**Best Practices:**
-- Keep your todo list updated with \`todowrite\`
-- Mark tasks complete immediately when finished
-- Use clear, actionable task descriptions
-- The system will prompt you to continue if tasks remain incomplete
-
-**Note:** You don't need to invoke the todo enforcer — it runs automatically when:
-- You have pending or in-progress todos
-- The session goes idle
-- There's been sufficient time since the last reminder
-- No background task is currently running (or just finished) for this session
 
 
 `

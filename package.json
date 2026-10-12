@@ -1,7 +1,7 @@
 {
   "name": "zenox",
-  "version": "1.8.1",
-  "description": "OpenCode plugin with specialized agents (explorer, librarian, oracle, ui-planner, inspector), a verification loop, hardened background tasks, and smart orchestration",
+  "version": "2.0.0",
+  "description": "OpenCode V2 plugin with specialized agents (explorer, librarian, oracle, ui-planner, inspector), a verification loop, hardened background tasks, and smart orchestration",
   "author": "Ayush",
   "license": "MIT",
   "type": "module",
@@ -14,6 +14,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./tui": {
+      "types": "./dist/tui.d.ts",
+      "import": "./dist/tui.js"
     }
   },
   "files": [
@@ -21,13 +25,11 @@
     "skills"
   ],
   "scripts": {
-    "build": "bun build src/index.ts --outdir dist --target bun --format esm && bun build src/cli/index.ts --outdir dist/cli --target node --format esm && tsc --emitDeclarationOnly",
+    "build": "bun build src/index.ts src/tui.ts --outdir dist --target node --format esm --packages external && bun build src/cli/index.ts --outdir dist/cli --target node --format esm && tsc --emitDeclarationOnly",
     "clean": "rm -rf dist",
     "prepublishOnly": "bun run clean && bun run build",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
-    "test:smoke": "bun test test/smoke.test.ts",
-    "test:regression": "bun test test/regression.test.ts"
+    "test": "bun test"
   },
   "keywords": [
     "zenox",
@@ -47,17 +49,13 @@
     "blueprint",
     "keyword-triggers",
     "toast-notifications",
-    "session-history",
-    "code-intelligence",
-    "lsp",
     "todo-enforcer",
-    "thinking-modes",
-    "variants",
     "project-guidelines",
     "auto-documentation",
     "ai",
     "llm",
-    "cli"
+    "cli",
+    "opencode-v2"
   ],
   "repository": {
     "type": "git",
@@ -68,15 +66,21 @@
   },
   "dependencies": {
     "@clack/prompts": "^0.11.0",
-    "@opencode-ai/plugin": "1.18.13",
-    "@opencode-ai/sdk": "1.18.13",
+    "@opencode/plugin": "^2.0.27",
     "commander": "^14.0.0",
     "picocolors": "^1.1.1",
     "strip-json-comments": "^5.0.3",
     "zod": "^4.1.8"
   },
   "devDependencies": {
+    "@opencode/theme": "2.0.27",
+    "@opentui/core": "0.5.10",
+    "@opentui/solid": "0.5.10",
     "bun-types": "latest",
+    "solid-js": "1.9.15",
     "typescript": "^5.7.3"
+  },
+  "engines": {
+    "opencode": ">=2.0.0"
   }
 }

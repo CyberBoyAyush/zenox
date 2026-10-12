@@ -17,7 +17,7 @@ export type McpName = z.infer<typeof McpNameSchema>
 export interface LocalMcpServerConfig {
   type: "local"
   command: string[]
-  enabled: boolean
+  disabled?: boolean
 }
 
 /**
@@ -26,7 +26,7 @@ export interface LocalMcpServerConfig {
 export interface RemoteMcpServerConfig {
   type: "remote"
   url: string
-  enabled: boolean
+  disabled?: boolean
 }
 
 /**

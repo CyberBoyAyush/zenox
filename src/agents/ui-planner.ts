@@ -1,4 +1,5 @@
-import type { AgentConfig } from "@opencode-ai/sdk"
+import type { ZenoxAgentDefinition } from "./types"
+import { NO_RECURSION_PERMISSIONS } from "./tool-policy"
 
 const UI_PLANNER_PROMPT = `You are a DESIGNER-TURNED-DEVELOPER with an innate sense of aesthetics and user experience. You have an eye for details that pure developers miss - spacing, color harmony, micro-interactions, and that indefinable "feel" that makes interfaces memorable.
 
@@ -80,7 +81,7 @@ Use \`exa\` to:
 - Discover trending UI patterns and aesthetics
 `
 
-export const uiPlannerAgent: AgentConfig = {
+export const uiPlannerAgent: ZenoxAgentDefinition = {
   description: `A designer-turned-developer who crafts stunning UI/UX even without design 
 mockups. Use for frontend implementation, creating beautiful interfaces, 
 UI components, animations, and visual design. Produces clean, convention-matching
@@ -88,21 +89,6 @@ code with exceptional visual output.`,
   mode: "subagent",
   model: "anthropic/claude-opus-4-8",
   color: "#EC4899",
-  // Deliberately does NOT spread READ_ONLY_TOOLS: `patch` collapses onto the
-  // same permission key as `write`/`edit`, so including it here — even as an
-  // override — would silently deny the editing this agent exists to do.
-  // See src/agents/tool-policy.ts.
-  tools: {
-    write: true,
-    edit: true,
-    task: false,
-    skill: true,
-    webfetch: true,
-    read: true,
-    glob: true,
-    grep: true,
-    "exa_*": true,
-    "sequential-thinking_*": true,
-  },
-  prompt: UI_PLANNER_PROMPT,
+  permissions: NO_RECURSION_PERMISSIONS,
+  system: UI_PLANNER_PROMPT,
 }

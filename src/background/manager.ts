@@ -8,9 +8,9 @@
  * - Generating completion notifications
  */
 
-import type { OpencodeClient } from "@opencode-ai/sdk"
 import type {
   BackgroundTask,
+  BackgroundSessionHost,
   LaunchInput,
   CompletionNotification,
 } from "./types"
@@ -60,10 +60,12 @@ export class BackgroundLimitError extends Error {
 export type CompletionNotifier = (notification: CompletionNotification) => void
 
 export class BackgroundManager {
+  constructor(private readonly host: BackgroundSessionHost) {}
+
   private tasks = new Map<string, BackgroundTask>()
-  private mainSessionID: string | undefined
   private toastManager: TaskToastManager | undefined
   private completionNotifier: CompletionNotifier | undefined
+  private childIdleListener: ((sessionID: string) => void) | undefined
   /** Parent sessions that were deleted; their task completions are silenced. */
   private detachedParentSessions = new Set<string>()
   private limits: BackgroundLimits = DEFAULT_BACKGROUND_LIMITS
@@ -127,14 +129,6 @@ export class BackgroundManager {
     this.completionNotifier = notifier
   }
 
-  setMainSession(sessionID: string | undefined): void {
-    this.mainSessionID = sessionID
-  }
-
-  getMainSession(): string | undefined {
-    return this.mainSessionID
-  }
-
   private generateTaskId(): string {
     return `bg_${crypto.randomUUID().slice(0, 8)}`
   }
@@ -184,13 +178,13 @@ export class BackgroundManager {
    * safety net for a session that is already unresponsive, so blocking on its
    * abort() would defeat the point of having a timeout at all.
    */
-  private scheduleTaskTimeout(client: OpencodeClient, task: BackgroundTask): void {
+  private scheduleTaskTimeout(task: BackgroundTask): void {
     const timeoutMs = this.limits.taskTimeoutMs
     const timer = setTimeout(() => {
       this.timeouts.delete(task.id)
       const current = this.tasks.get(task.id)
       if (!current || current.status !== "running") return
-      client.session.abort({ path: { id: current.sessionID } }).catch(() => {})
+      this.host.interrupt(current.sessionID).catch(() => {})
       this.failTask(
         current,
         `Timed out after ${Math.round(timeoutMs / 60_000)} minutes and was aborted`
@@ -201,10 +195,7 @@ export class BackgroundManager {
     this.timeouts.set(task.id, timer)
   }
 
-  async launch(
-    client: OpencodeClient,
-    input: LaunchInput
-  ): Promise<BackgroundTask> {
+  async launch(input: LaunchInput): Promise<BackgroundTask> {
     // Atomic admission: check the limit AND reserve the slot in the same
     // synchronous step (no await between them) so simultaneous launches cannot
     // collectively overshoot maxConcurrent. This is the authoritative gate.
@@ -222,21 +213,7 @@ export class BackgroundManager {
     }
 
     try {
-      // Store main session ID for notifications
-      if (!this.mainSessionID) {
-        this.mainSessionID = input.parentSessionID
-      }
-
-      // Create child session
-      const createResult = await client.session.create({
-        body: {
-          parentID: input.parentSessionID,
-        },
-      })
-
-      // Handle SDK response structure
-      const sessionData = "data" in createResult ? createResult.data : createResult
-      const sessionID = sessionData?.id
+      const sessionID = await this.createChildSession(input)
 
       if (!sessionID) {
         throw new Error("Failed to create background session")
@@ -258,8 +235,6 @@ export class BackgroundManager {
         prompt: input.prompt,
         status: "running",
         startedAt: new Date(),
-        parentAgent: input.parentAgent,
-        parentModel: input.parentModel,
       }
 
       this.tasks.set(task.id, task)
@@ -276,7 +251,7 @@ export class BackgroundManager {
       // Bound memory: trim oldest finished tasks if we exceed the cap
       this.trimRetainedTasks()
 
-      return this.continueLaunch(client, task, input)
+      return this.continueLaunch(task, input)
     } catch (err) {
       releaseReservation()
       throw err
@@ -284,11 +259,7 @@ export class BackgroundManager {
   }
 
   /** Completes the prompt dispatch after the task record is registered. */
-  private continueLaunch(
-    client: OpencodeClient,
-    task: BackgroundTask,
-    input: LaunchInput
-  ): BackgroundTask {
+  private continueLaunch(task: BackgroundTask, input: LaunchInput): BackgroundTask {
     const sessionID = task.sessionID
 
     // Show launch toast
@@ -302,44 +273,55 @@ export class BackgroundManager {
 
     // Schedule the wall-clock timeout so a task whose child session never
     // goes idle cannot hold a concurrency slot forever.
-    this.scheduleTaskTimeout(client, task)
+    this.scheduleTaskTimeout(task)
 
-    // Fire-and-forget: send prompt without awaiting result
-    // Includes retry logic for agent.name undefined errors
-    const sendPrompt = async (retryWithoutAgent = false) => {
-      try {
-        await client.session.prompt({
-          path: { id: sessionID },
-          body: {
-            // On retry, omit agent to use default
-            ...(retryWithoutAgent ? {} : { agent: input.agent }),
-            tools: { task: false }, // Prevent recursive background tasks
-            parts: [{ type: "text", text: input.prompt }],
-          },
-        })
-      } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : String(err)
-
-        // Detect the specific agent.name undefined error and retry without agent
-        if (
-          !retryWithoutAgent &&
-          (errorMsg.includes("agent.name") || errorMsg.includes("undefined is not an object"))
-        ) {
-          console.warn(`[zenox] Agent "${input.agent}" not found. Retrying with default agent.`)
-          return sendPrompt(true)
-        }
-
-        // Handle other errors
+    // Fire-and-forget: the child runs while the parent keeps working. Completion
+    // is detected by waiting on the child session directly (V2 plugin event
+    // delivery is not reliable — anomalyco/opencode#44788); a session.idle
+    // event, if delivered, is handled the same way and is idempotent.
+    const isRunning = () => this.tasks.get(task.id)?.status === "running"
+    this.host.prompt(sessionID, input.prompt).then(
+      () =>
+        this.host
+          .waitForCompletion(sessionID, isRunning)
+          .then(() => {
+            if (isRunning()) this.childIdleListener?.(sessionID)
+          })
+          .catch(() => {
+            // Waiting failed; the task timeout (or a session.idle event) settles it.
+          }),
+      (err: unknown) => {
         const existingTask = this.tasks.get(task.id)
         if (existingTask && existingTask.status === "running") {
-          this.failTask(existingTask, errorMsg)
+          this.failTask(existingTask, err instanceof Error ? err.message : String(err))
         }
       }
-    }
-
-    sendPrompt().catch(() => {})
+    )
 
     return task
+  }
+
+  /**
+   * Create the child session for a task. Fails closed if the agent is rejected:
+   * silently falling back to the default agent would run the task without the
+   * subagent's read-only restrictions and system prompt.
+   */
+  private createChildSession(input: LaunchInput): Promise<string> {
+    return this.host.createChildSession({
+      parentSessionID: input.parentSessionID,
+      agent: input.agent,
+      title: `${input.description} (@${input.agent} background)`,
+    })
+  }
+
+  /** Called when a child session finishes; the plugin routes it like a session.idle. */
+  setChildIdleListener(listener: (sessionID: string) => void): void {
+    this.childIdleListener = listener
+  }
+
+  /** True if `sessionID` is a background child session (running or retained). */
+  isBackgroundSession(sessionID: string): boolean {
+    return this.findTaskBySessionID(sessionID) !== undefined
   }
 
   getTask(taskId: string): BackgroundTask | undefined {
@@ -355,10 +337,7 @@ export class BackgroundManager {
     return undefined
   }
 
-  async getOutput(
-    client: OpencodeClient,
-    taskId: string
-  ): Promise<string | undefined> {
+  async getOutput(taskId: string): Promise<string> {
     const task = this.tasks.get(taskId)
     if (!task) {
       return `Task ${taskId} not found`
@@ -376,45 +355,17 @@ export class BackgroundManager {
       return `Task ${taskId} was cancelled`
     }
 
-    // Read messages from the background session
     try {
-      const messagesResult = await client.session.messages({
-        path: { id: task.sessionID },
-      })
-
-      // Handle SDK response structure
-      const messages =
-        "data" in messagesResult ? messagesResult.data : messagesResult
-
-      if (!messages || !Array.isArray(messages)) {
-        return `Task ${taskId} completed but could not retrieve messages`
-      }
-
-      // Messages are { info: Message, parts: Part[] } objects
-      interface MessageWrapper {
-        info: {
-          role: string
-        }
-        parts: Array<{
-          type: string
-          text?: string
-        }>
-      }
-
-      const assistantMessages = (messages as MessageWrapper[]).filter(
-        (m) => m.info.role === "assistant" && m.parts && m.parts.length > 0
+      const messages = await this.host.readMessages(task.sessionID)
+      const assistantMessages = messages.filter(
+        (m) => m.role === "assistant" && m.texts.length > 0
       )
 
       if (assistantMessages.length === 0) {
         return `Task ${taskId} completed but no output found`
       }
 
-      const lastMessage = assistantMessages[assistantMessages.length - 1]
-
-      // Extract text content from message parts
-      const textParts = lastMessage.parts.filter((p) => p.type === "text")
-      const output = textParts.map((p) => p.text ?? "").join("\n")
-
+      const output = assistantMessages[assistantMessages.length - 1].texts.join("\n")
       return output || `Task ${taskId} completed but output was empty`
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Unknown error"
@@ -422,7 +373,7 @@ export class BackgroundManager {
     }
   }
 
-  async cancel(client: OpencodeClient, taskId: string): Promise<boolean> {
+  async cancel(taskId: string): Promise<boolean> {
     const task = this.tasks.get(taskId)
     if (!task || task.status !== "running") {
       return false
@@ -444,7 +395,7 @@ export class BackgroundManager {
     this.clearTaskTimeout(task.id)
 
     try {
-      await client.session.abort({ path: { id: task.sessionID } })
+      await this.host.interrupt(task.sessionID)
     } catch {
       // Already gone server-side; the task is cancelled either way.
     }
@@ -568,18 +519,12 @@ ${runningTasks.length} task(s) still running. Continue working.
 </system-reminder>`
     }
 
-    // Parent context from a completed task in THIS session (all share parent).
-    const parentAgent = completedTasks[0]?.parentAgent
-    const parentModel = completedTasks[0]?.parentModel
-
     return {
       allComplete,
       message,
       completedTasks,
       runningCount: runningTasks.length,
       parentSessionID,
-      parentAgent,
-      parentModel,
     }
   }
 
@@ -589,21 +534,8 @@ ${runningTasks.length} task(s) still running. Continue working.
 
   /**
    * True if this session has a background task running, or a completion
-   * notification for it is currently being claimed/delivered — used to skip
-   * the todo-continuation nudge while background work is (or is about to be)
-   * in flight for this session.
-   *
-   * Deliberately state-based, not time-based: an earlier version suppressed
-   * the enforcer for a fixed window (e.g. 60s, later 15s) after a task
-   * finished. Since the enforcer only fires on the `session.idle` event
-   * (edge-triggered, not polled), a fast synthesis turn that went idle before
-   * the window elapsed would still hit the exact same "lost edge" stall —
-   * shrinking the window only reduced how often it happened, it never closed
-   * it. Tying suppression to the actual `claiming` lifecycle instead means it
-   * clears the instant delivery is confirmed (success or failure), and by
-   * then the parent session is busy processing that delivered message (or,
-   * on failure, the very next idle re-attempts it — see the retry in
-   * ZenoxPlugin's session.idle handler) rather than sitting idle mid-window.
+   * notification for it is currently being claimed/delivered. State-based
+   * (running || claiming), never time-based.
    */
   hasActiveBackgroundWork(parentSessionID: string): boolean {
     for (const task of this.tasks.values()) {
@@ -659,26 +591,26 @@ ${runningTasks.length} task(s) still running. Continue working.
 
   /**
    * Mark a parent session as detached (e.g. it was deleted). Finished tasks for
-   * it are dropped immediately. With a client, still-running tasks are also
+   * it are dropped immediately. With abortRunning, still-running tasks are also
    * aborted — nobody is left to read their results, so letting them keep
-   * running just burns tokens. Without a client they finish silently (the
+   * running just burns tokens. Otherwise they finish silently (the
    * detached set suppresses their notifications).
    *
    * The abort is fire-and-forget and the task is dropped from bookkeeping
    * immediately rather than waiting for it to settle: the parent session is
    * gone either way, so there is nothing left to keep a concurrency slot for.
    * If abort() silently fails, the child keeps running unobserved — the same
-   * outcome as calling this without a client, so this path is never worse
+   * outcome as calling this without abortRunning, so this path is never worse
    * than the prior (no-abort) behavior, only sometimes better.
    */
-  detachParentSession(sessionID: string, client?: OpencodeClient): void {
+  detachParentSession(sessionID: string, abortRunning = true): void {
     if (!sessionID) return
     this.detachedParentSessions.add(sessionID)
     for (const [id, task] of this.tasks) {
       if (task.parentSessionID !== sessionID) continue
       if (task.status === "running") {
-        if (client) {
-          client.session.abort({ path: { id: task.sessionID } }).catch(() => {})
+        if (abortRunning) {
+          this.host.interrupt(task.sessionID).catch(() => {})
           task.status = "cancelled"
           task.completedAt = new Date()
           this.clearTaskTimeout(id)
@@ -735,6 +667,5 @@ ${runningTasks.length} task(s) still running. Continue working.
     this.spawnCounts.clear()
     this.detachedParentSessions.clear()
     this.reserved = 0
-    this.mainSessionID = undefined
   }
 }

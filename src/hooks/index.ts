@@ -1,4 +1,2 @@
-export { createAutoUpdateHook } from "./auto-update"
-export { createKeywordDetectorHook } from "./keyword-detector"
-export { createTodoEnforcerHook } from "./todo-enforcer"
+export { createKeywordDetectorHook, KEYWORD_CONFIGS, type KeywordPromptEvent } from "./keyword-detector"
 export type { KeywordType, KeywordConfig } from "./keyword-detector"

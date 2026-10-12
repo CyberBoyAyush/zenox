@@ -3,7 +3,7 @@ import { readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { homedir } from "node:os"
 import stripJsonComments from "strip-json-comments"
-import type { OpencodeConfig, ConfigFormat } from "./types"
+import type { OpencodeConfig, ConfigFormat, PluginEntry } from "./types"
 import { PACKAGE_NAME } from "./constants"
 
 const CONFIG_FILENAMES = ["opencode.json", "opencode.jsonc"]
@@ -66,10 +66,17 @@ export async function readConfig(configPath: string): Promise<{ content: string;
   return { content, config }
 }
 
+function pluginSpec(entry: PluginEntry): string {
+  return typeof entry === "string" ? entry : entry.package
+}
+
 export function isPluginInstalled(config: OpencodeConfig): boolean {
-  // Handle both "plugins" (array) and "plugin" (array) - OpenCode supports both
-  const plugins = config.plugins ?? config.plugin ?? []
-  return plugins.some((p) => p === PACKAGE_NAME || p.startsWith(`${PACKAGE_NAME}@`))
+  // V2 uses "plugins" (string or { package, options }); V1's "plugin" is still read.
+  const plugins = [...(config.plugins ?? []), ...(config.plugin ?? [])]
+  return plugins.some((entry) => {
+    const spec = pluginSpec(entry)
+    return spec === PACKAGE_NAME || spec.startsWith(`${PACKAGE_NAME}@`)
+  })
 }
 
 function addPluginToJsonc(content: string): string {
@@ -99,19 +106,19 @@ function addPluginToJsonc(content: string): string {
     const afterTrimmed = afterBrace.trimStart()
 
     if (afterTrimmed.startsWith("}")) {
-      return `${beforeBrace}\n  "plugin": ["${PACKAGE_NAME}"]\n}`
+      return `${beforeBrace}\n  "plugins": ["${PACKAGE_NAME}"]\n}`
     } else {
-      return `${beforeBrace}\n  "plugin": ["${PACKAGE_NAME}"],\n  ${afterBrace.trimStart()}`
+      return `${beforeBrace}\n  "plugins": ["${PACKAGE_NAME}"],\n  ${afterBrace.trimStart()}`
     }
   }
 }
 
 function addPluginToJson(config: OpencodeConfig): string {
   // For plain JSON, use proper parsing to maintain clean formatting
-  // Preserve the key name used in original config, default to "plugin" (OpenCode standard)
-  const existingKey = config.plugins ? "plugins" : config.plugin ? "plugin" : "plugin"
-  const existingPlugins = config.plugins ?? config.plugin ?? []
-  
+  // Preserve the key already in use; default to V2's "plugins"
+  const existingKey = config.plugins ? "plugins" : config.plugin ? "plugin" : "plugins"
+  const existingPlugins: PluginEntry[] = config.plugins ?? config.plugin ?? []
+
   const newConfig = {
     [existingKey]: [PACKAGE_NAME, ...existingPlugins],
     ...Object.fromEntries(
@@ -150,7 +157,8 @@ export function getGlobalConfigPath(): string {
 
 export async function createDefaultConfig(configPath: string): Promise<void> {
   const defaultConfig = {
-    plugin: [PACKAGE_NAME],
+    $schema: "https://opencode.ai/config.json",
+    plugins: [PACKAGE_NAME],
   }
   await writeFile(configPath, JSON.stringify(defaultConfig, null, 2) + "\n", "utf-8")
 }

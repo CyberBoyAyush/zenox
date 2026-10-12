@@ -1,4 +1,1 @@
-export {
-  createProjectGuidelinesTools,
-  type ProjectGuidelinesTools,
-} from "./tools"
+export { addProjectGuidelinesTool, saveProjectGuideline } from "./tools"

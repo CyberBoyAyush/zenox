@@ -13,7 +13,7 @@ ULTRAWORK MODE ACTIVE - Maximum multi-agent coordination engaged.
 4. Consult oracle for architectural decisions before implementing
 5. Verify ALL delegated work before marking tasks complete
 
-**Pre-delegation reasoning** (do this before every Task/background_task):
+**Pre-delegation reasoning** (do this before every subagent/background_task call):
 - What type of work? (search → background, decision → sync, visual → sync)
 - Can I continue working while this runs? If yes → background_task
 - Do I need this answer RIGHT NOW to proceed? If no → background_task
@@ -85,7 +85,7 @@ REVIEW MODE — Code review and self-review active.
 
 **Required actions**:
 1. Run \`git diff\` (or \`git diff HEAD~1\`) to capture the actual changes
-2. Fire exactly ONE Oracle \`task\` call — include the full diff output in the prompt
+2. Fire exactly ONE Oracle \`subagent\` call — include the full diff output in the prompt
 3. Do NOT create multiple oracle tasks (one per file, one per concern, etc.)
 4. Oracle reviews the diff directly — it will NOT read files or search the codebase
 5. Collect Oracle's review before marking the task complete
@@ -94,11 +94,11 @@ REVIEW MODE — Code review and self-review active.
 **Review pattern**:
 \`\`\`
 // Step 1: Get the diff
-const diff = bash("git diff HEAD~1")
+const diff = shell("git diff HEAD~1")
 
 // Step 2: Fire ONE oracle task with the diff included
-task(
-  subagent_type: "oracle",
+subagent(
+  agent: "oracle",
   description: "Review recent changes",
   prompt: "Review this implementation. Here is the git diff:\\n\\n\`\`\`diff\\n[actual diff output]\\n\`\`\`\\n\\nFocus on correctness, security, regressions, and architecture fit."
 )
@@ -137,8 +137,8 @@ BLUEPRINT MODE — Staged plan-lock pipeline active. No code before the plan is 
 [exact command(s) — e.g. "bun test && bun run typecheck"]
 
 // only now: begin implementation, then at the end:
-task(
-  subagent_type: "inspector",
+subagent(
+  agent: "inspector",
   description: "Verify implementation",
   prompt: "Done when: <the exact line locked above>. Run the checks and report the verdict."
 )

@@ -58,7 +58,7 @@ export const BackgroundConfigSchema = z.object({
 export type BackgroundConfig = z.infer<typeof BackgroundConfigSchema>
 
 /**
- * Auto-update behavior config.
+ * Startup toast config (OpenCode V2 updates plugins itself).
  */
 export const AutoUpdateConfigSchema = z.object({
   /** Show the startup version toast on session start (default: true). */

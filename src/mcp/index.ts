@@ -1,7 +1,7 @@
 import { exa } from "./exa"
 import { grep_app } from "./grep-app"
 import { sequentialThinking } from "./sequential-thinking"
-import type { McpName } from "./types"
+import type { McpName, McpServerConfig } from "./types"
 
 export { McpNameSchema, type McpName } from "./types"
 export type { McpServerConfig, LocalMcpServerConfig, RemoteMcpServerConfig } from "./types"
@@ -21,8 +21,8 @@ const allBuiltinMcps = {
  * @param disabledMcps - Array of MCP names to disable
  * @returns Record of enabled MCP server configurations
  */
-export function createBuiltinMcps(disabledMcps: McpName[] = []) {
-  const mcps: Record<string, (typeof allBuiltinMcps)[keyof typeof allBuiltinMcps]> = {}
+export function createBuiltinMcps(disabledMcps: readonly McpName[] = []): Record<string, McpServerConfig> {
+  const mcps: Record<string, McpServerConfig> = {}
 
   for (const [name, config] of Object.entries(allBuiltinMcps)) {
     if (!disabledMcps.includes(name as McpName)) {

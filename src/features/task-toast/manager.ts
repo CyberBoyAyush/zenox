@@ -7,7 +7,7 @@
  * - Shows summary toast when all tasks complete
  */
 
-import type { OpencodeClient } from "@opencode-ai/sdk"
+import type { ToastSink } from "../../shared/toast"
 
 interface TrackedTask {
   id: string
@@ -31,10 +31,10 @@ function formatDuration(startedAt: Date): string {
 
 export class TaskToastManager {
   private tasks = new Map<string, TrackedTask>()
-  private client: OpencodeClient
+  private sink: ToastSink
 
-  constructor(client: OpencodeClient) {
-    this.client = client
+  constructor(sink: ToastSink) {
+    this.sink = sink
   }
 
   async showLaunchToast(task: {
@@ -54,16 +54,12 @@ export class TaskToastManager {
       ? `"${task.description}"\nAgent: ${task.agent}\nRunning: ${runningCount}`
       : `"${task.description}"\nAgent: ${task.agent}`
 
-    await this.client.tui
-      .showToast({
-        body: {
-          title: "⚡ Background Task Launched",
-          message,
-          variant: "info",
-          duration: LAUNCH_TOAST_DURATION,
-        },
-      })
-      .catch(() => {})
+    this.sink({
+      title: "⚡ Background Task Launched",
+      message,
+      variant: "info",
+      duration: LAUNCH_TOAST_DURATION,
+        })
   }
 
   async showCompletionToast(taskId: string): Promise<void> {
@@ -82,16 +78,12 @@ export class TaskToastManager {
 
     const message = `"${task.description}" (${duration})\nStill running: ${runningCount}`
 
-    await this.client.tui
-      .showToast({
-        body: {
-          title: "✅ Task Completed",
-          message,
-          variant: "success",
-          duration: COMPLETE_TOAST_DURATION,
-        },
-      })
-      .catch(() => {})
+    this.sink({
+      title: "✅ Task Completed",
+      message,
+      variant: "success",
+      duration: COMPLETE_TOAST_DURATION,
+        })
   }
 
   async showFailureToast(taskId: string, error?: string): Promise<void> {
@@ -105,16 +97,12 @@ export class TaskToastManager {
       ? `"${task.description}" (${duration})\nError: ${error}`
       : `"${task.description}" (${duration})`
 
-    await this.client.tui
-      .showToast({
-        body: {
-          title: "❌ Task Failed",
-          message,
-          variant: "error",
-          duration: COMPLETE_TOAST_DURATION,
-        },
-      })
-      .catch(() => {})
+    this.sink({
+      title: "❌ Task Failed",
+      message,
+      variant: "error",
+      duration: COMPLETE_TOAST_DURATION,
+        })
   }
 
   private async showAllCompleteToast(): Promise<void> {
@@ -130,16 +118,12 @@ export class TaskToastManager {
       })
       .join("\n")
 
-    await this.client.tui
-      .showToast({
-        body: {
-          title: "🎉 All Background Tasks Complete",
-          message: `${taskList}\n\nUse background_output to retrieve.`,
-          variant: "success",
-          duration: ALL_COMPLETE_TOAST_DURATION,
-        },
-      })
-      .catch(() => {})
+    this.sink({
+      title: "🎉 All Background Tasks Complete",
+      message: `${taskList}\n\nUse background_output to retrieve.`,
+      variant: "success",
+      duration: ALL_COMPLETE_TOAST_DURATION,
+        })
 
     // Clear completed tasks after showing summary
     this.clearCompleted()

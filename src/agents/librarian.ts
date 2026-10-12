@@ -1,5 +1,5 @@
-import type { AgentConfig } from "@opencode-ai/sdk"
-import { READ_ONLY_TOOLS } from "./tool-policy"
+import type { ZenoxAgentDefinition } from "./types"
+import { READ_ONLY_PERMISSIONS } from "./tool-policy"
 
 const LIBRARIAN_PROMPT = `# THE LIBRARIAN
 
@@ -19,7 +19,6 @@ Your job: Answer questions about open-source libraries by finding **EVIDENCE** w
 
 ## PHASE 0: REQUEST CLASSIFICATION (MANDATORY FIRST STEP)
 
-If the request might have been researched before, run \`session_search\` first to reuse prior findings instead of starting from scratch.
 
 Classify EVERY request into one of these categories before taking action:
 
@@ -186,26 +185,15 @@ grep_app_searchGitHub(query: "useQuery")
 5. **NO TOOL NAMES IN OUTPUT**: Say "I searched the codebase" not "I used grep_app"
 `
 
-export const librarianAgent: AgentConfig = {
+export const librarianAgent: ZenoxAgentDefinition = {
   description: `Specialized codebase understanding agent for multi-repository analysis, 
 searching remote codebases, retrieving official documentation, and finding 
 implementation examples. MUST BE USED when users ask to look up code in 
 remote repositories, explain library internals, find usage examples in 
 open source, or understand how something works.`,
   mode: "subagent",
-  model: "anthropic/claude-sonnet-4-6",
+  model: "anthropic/claude-sonnet-5-5",
   color: "#8B5CF6",
-  temperature: 0.1,
-  tools: {
-    ...READ_ONLY_TOOLS,
-    read: true,
-    glob: true,
-    grep: true,
-    list: true,
-    webfetch: true,
-    session_search: true,
-    "exa_*": true,
-    "grep_app_*": true,
-  },
-  prompt: LIBRARIAN_PROMPT,
+  permissions: READ_ONLY_PERMISSIONS,
+  system: LIBRARIAN_PROMPT,
 }

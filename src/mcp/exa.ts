@@ -18,5 +18,5 @@ export const exa: LocalMcpServerConfig = {
     "mcp-remote",
     "https://mcp.exa.ai/mcp?tools=web_search_exa,get_code_context_exa,crawling_exa",
   ],
-  enabled: true,
+  disabled: false,
 }

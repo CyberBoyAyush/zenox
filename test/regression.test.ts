@@ -2,117 +2,74 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { applyAgentVariant, resolveAgentVariant, type VariantMessage } from "../src/shared"
-import { explorerAgent, librarianAgent, oracleAgent, uiPlannerAgent } from "../src/agents"
+import { explorerAgent, librarianAgent, oracleAgent, uiPlannerAgent, resolveAgentModel } from "../src/agents"
 import { loadPluginConfig } from "../src/config"
-import {
-  clearSessionAgent,
-  getOrchestrationAgentType,
-  getSessionAgent,
-  getSessionContext,
-  getSessionModel,
-  setSessionContext,
-} from "../src/orchestration/session-agent-tracker"
+import type { ZenoxToast } from "../src/shared"
 import { ORCHESTRATION_PROMPT, getOrchestrationPrompt } from "../src/orchestration/prompt"
 import { ZenoxConfigSchema } from "../src/config"
-import { createKeywordDetectorHook } from "../src/hooks"
+import { createKeywordDetectorHook, KEYWORD_CONFIGS } from "../src/hooks"
 
 function createTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
 }
 
-describe("variant migration", () => {
-  test("applyAgentVariant writes to message.model.variant", () => {
-    const message: VariantMessage = {}
-
-    applyAgentVariant(
-      {
-        agents: {
-          explorer: { variant: "high" },
-        },
-      },
-      "explorer",
-      message,
+describe("model resolution", () => {
+  test("built-in variant is kept, overrides replace model and/or variant", () => {
+    expect(resolveAgentModel("openai/gpt-5.6-sol#medium", undefined)).toBe("openai/gpt-5.6-sol#medium")
+    expect(resolveAgentModel("openai/gpt-5.6-sol#medium", { variant: "xhigh" })).toBe("openai/gpt-5.6-sol#xhigh")
+    expect(resolveAgentModel("openai/gpt-5.6-sol#medium", { model: "anthropic/claude-opus-4-8" })).toBe(
+      "anthropic/claude-opus-4-8"
     )
-
-    expect(message.model?.variant).toBe("high")
-  })
-
-  test("applyAgentVariant preserves an existing nested variant", () => {
-    const message: VariantMessage = {
-      model: { variant: "existing" },
-    }
-
-    applyAgentVariant(
-      {
-        agents: {
-          explorer: { variant: "high" },
-        },
-      },
-      "explorer",
-      message,
-    )
-
-    expect(message.model?.variant).toBe("existing")
-  })
-
-  test("resolveAgentVariant still reads configured overrides", () => {
-    expect(
-      resolveAgentVariant(
-        {
-          agents: {
-            oracle: { variant: "xhigh" },
-          },
-        },
-        "oracle",
-      ),
-    ).toBe("xhigh")
+    expect(resolveAgentModel("a/b", { model: "c/d#low" })).toBe("c/d#low")
+    expect(resolveAgentModel("a/b", { model: "c/d#low", variant: "high" })).toBe("c/d#high")
   })
 })
 
 describe("prompt regressions", () => {
   test("oracle defaults to gpt-5.6-sol medium", () => {
-    expect(oracleAgent.model).toBe("openai/gpt-5.6-sol")
-    expect(oracleAgent.variant).toBe("medium")
+    expect(oracleAgent.model).toBe("openai/gpt-5.6-sol#medium")
   })
 
   test("oracle prompt distinguishes grounded analysis from review mode", () => {
-    expect(oracleAgent.prompt).toContain("keep plausible causes open")
-    expect(oracleAgent.prompt).toContain("review format below overrides")
-    expect(oracleAgent.prompt).toContain("Do not file a finding solely because context is missing")
-    expect(oracleAgent.prompt).not.toContain("Dense and useful beats long and thorough")
+    expect(oracleAgent.system).toContain("keep plausible causes open")
+    expect(oracleAgent.system).toContain("review format below overrides")
+    expect(oracleAgent.system).toContain("Do not file a finding solely because context is missing")
+    expect(oracleAgent.system).not.toContain("Dense and useful beats long and thorough")
   })
 
-  test("orchestration prompt uses current tool names", () => {
-    expect(ORCHESTRATION_PROMPT).toContain("`task` tool")
-    expect(ORCHESTRATION_PROMPT).toContain("`todowrite`")
+  test("orchestration prompt uses V2 tool names", () => {
+    expect(ORCHESTRATION_PROMPT).toContain("`subagent` tool")
+    expect(ORCHESTRATION_PROMPT).toContain('subagent(\n  agent: "explorer"')
+    expect(ORCHESTRATION_PROMPT).not.toContain("subagent_type")
+    expect(ORCHESTRATION_PROMPT).not.toMatch(/(^|[^_])task\(/)
     expect(ORCHESTRATION_PROMPT).not.toContain("TodoWrite")
-    expect(ORCHESTRATION_PROMPT).not.toContain("Task(")
   })
 
   test("explorer prompt only references available search tools", () => {
-    expect(explorerAgent.prompt).toContain("grep_app_searchGitHub")
-    expect(explorerAgent.prompt).not.toContain("ast_grep_search")
-    expect(explorerAgent.prompt).not.toContain("3+ tools simultaneously")
-    expect(explorerAgent.prompt).not.toContain("Intent Check (Required")
-    expect(explorerAgent.prompt).toContain("Never invent a file")
-    expect(explorerAgent.prompt).toContain("Disclose capped coverage")
-    expect(explorerAgent.prompt).toContain("Generated code")
+    expect(explorerAgent.system).toContain("grep_app_searchGitHub")
+    expect(explorerAgent.system).not.toContain("ast_grep_search")
+    expect(explorerAgent.system).not.toContain("3+ tools simultaneously")
+    expect(explorerAgent.system).not.toContain("Intent Check (Required")
+    expect(explorerAgent.system).toContain("Never invent a file")
+    expect(explorerAgent.system).toContain("Disclose capped coverage")
+    expect(explorerAgent.system).toContain("Generated code")
   })
 
   test("librarian prompt avoids hard minimum call quotas", () => {
-    expect(librarianAgent.prompt).toContain("PARALLEL EXECUTION GUIDANCE")
-    expect(librarianAgent.prompt).not.toContain("Minimum Parallel Calls")
-    expect(librarianAgent.prompt).not.toContain("Execute ALL in parallel (6+ calls)")
+    expect(librarianAgent.system).toContain("PARALLEL EXECUTION GUIDANCE")
+    expect(librarianAgent.system).not.toContain("Minimum Parallel Calls")
+    expect(librarianAgent.system).not.toContain("Execute ALL in parallel (6+ calls)")
   })
 
-  test("orchestration prompt still documents the actual background and session tools", () => {
+  test("prompts document background tools and never mention tools dropped on V2", () => {
     expect(ORCHESTRATION_PROMPT).toContain("background_task")
     expect(ORCHESTRATION_PROMPT).toContain("background_output")
-    expect(ORCHESTRATION_PROMPT).toContain("session_list")
-    expect(ORCHESTRATION_PROMPT).toContain("session_search")
-    expect(ORCHESTRATION_PROMPT).toContain("find_symbols")
-    expect(ORCHESTRATION_PROMPT).toContain("lsp_status")
+    const all = [ORCHESTRATION_PROMPT, ...[explorerAgent, librarianAgent, oracleAgent, uiPlannerAgent].map((a) => a.system)]
+    for (const text of all) {
+      for (const dropped of ["session_list", "session_search", "find_symbols", "lsp_status"]) {
+        expect(text).not.toContain(dropped)
+      }
+    }
   })
 
   test("orchestration prompt documents skills and background concurrency limits", () => {
@@ -125,25 +82,15 @@ describe("prompt regressions", () => {
   })
 
   test("ui-planner can load skills and references frontend-design", () => {
-    expect(uiPlannerAgent.tools?.skill).toBe(true)
-    expect(uiPlannerAgent.prompt).toContain("frontend-design")
+    expect(uiPlannerAgent.permissions.some((p) => p.action === "skill")).toBe(false)
+    expect(uiPlannerAgent.system).toContain("frontend-design")
     // Inline skill body should be gone (now loaded via the skill tool)
-    expect(uiPlannerAgent.prompt).not.toContain("## NEVER Use Generic AI Aesthetics")
+    expect(uiPlannerAgent.system).not.toContain("## NEVER Use Generic AI Aesthetics")
     expect(uiPlannerAgent.model).toBe("anthropic/claude-opus-4-8")
-    expect(uiPlannerAgent.prompt).toContain("override the skill's greenfield aesthetic guidance")
-    expect(uiPlannerAgent.prompt).toContain("reduced motion")
-    expect(uiPlannerAgent.prompt).toContain("materially benefits from a package")
+    expect(uiPlannerAgent.system).toContain("override the skill's greenfield aesthetic guidance")
+    expect(uiPlannerAgent.system).toContain("reduced motion")
+    expect(uiPlannerAgent.system).toContain("materially benefits from a package")
     expect(uiPlannerAgent.description).not.toContain("Code may be a bit messy")
-  })
-
-  test("explorer has LSP tools available", () => {
-    expect(explorerAgent.tools?.find_symbols).toBe(true)
-    expect(explorerAgent.tools?.lsp_status).toBe(true)
-  })
-
-  test("oracle and librarian can search past sessions", () => {
-    expect(oracleAgent.tools?.session_search).toBe(true)
-    expect(librarianAgent.tools?.session_search).toBe(true)
   })
 
   test("orchestration prompt omits a disabled-agents note when none are disabled", () => {
@@ -173,6 +120,34 @@ describe("prompt regressions", () => {
   test("getOrchestrationPrompt returns undefined for non build/plan agents", () => {
     expect(getOrchestrationPrompt("explorer", new Set(["oracle"]))).toBeUndefined()
     expect(getOrchestrationPrompt(undefined)).toBeUndefined()
+  })
+})
+
+describe("V2 capability audit", () => {
+  const agents = [explorerAgent, librarianAgent, oracleAgent, uiPlannerAgent]
+  const texts = () => [
+    getOrchestrationPrompt("build")!,
+    ...agents.map((a) => a.system),
+    ...KEYWORD_CONFIGS.map((k) => k.context),
+  ]
+
+  test("no prompt advertises a feature that does not exist on OpenCode V2", () => {
+    const unavailable = [
+      "session_list", "session_search", "find_symbols", "lsp_status", "todowrite", "TodoWrite",
+      "Todo Continuation", "subagent_type", "Code Intelligence", "Session History", "bash(",
+    ]
+    for (const text of texts()) {
+      for (const name of unavailable) expect(text).not.toContain(name)
+      expect(text).not.toMatch(/(^|[^_])task\(/)
+    }
+  })
+
+  test("orchestration prompt steers background work to background_task", () => {
+    expect(getOrchestrationPrompt("build")).toContain("not the `subagent` tool's own `background` flag")
+  })
+
+  test("librarian defaults to Claude Sonnet 5.5", () => {
+    expect(librarianAgent.model).toBe("anthropic/claude-sonnet-5-5")
   })
 })
 
@@ -257,140 +232,57 @@ describe("config loading", () => {
   })
 })
 
-describe("session tracking", () => {
-  test("tracks and clears agent and model context", () => {
-    const sessionID = "tracker-session"
-    clearSessionAgent(sessionID)
-
-    setSessionContext(sessionID, {
-      agent: "build",
-      model: { providerID: "anthropic", modelID: "claude-sonnet-4-7" },
-    })
-
-    expect(getSessionAgent(sessionID)).toBe("build")
-    expect(getSessionModel(sessionID)).toEqual({
-      providerID: "anthropic",
-      modelID: "claude-sonnet-4-7",
-    })
-    expect(getSessionContext(sessionID)).toEqual({
-      agent: "build",
-      model: { providerID: "anthropic", modelID: "claude-sonnet-4-7" },
-    })
-
-    clearSessionAgent(sessionID)
-
-    expect(getSessionContext(sessionID)).toBeUndefined()
-  })
-
-  test("maps orchestration agent types correctly", () => {
-    expect(getOrchestrationAgentType("build")).toBe("build")
-    expect(getOrchestrationAgentType("plan")).toBe("plan")
-    expect(getOrchestrationAgentType("oracle")).toBe("oracle")
-    expect(getOrchestrationAgentType(undefined)).toBeUndefined()
-  })
-})
-
 describe("keyword detector", () => {
-  test("injects a keyword context once per session and keyword set", async () => {
-    const toasts: Array<{ title: string; message: string }> = []
-    const hook = createKeywordDetectorHook({
-      client: {
-        tui: {
-          showToast: async ({ body }: { body: { title: string; message: string } }) => {
-            toasts.push({ title: body.title, message: body.message })
-            return true
-          },
-        },
-      },
-    } as never)
-
-    const firstOutput = {
-      parts: [{ type: "text", text: "please do deep research" }],
-      message: {},
+  function hook() {
+    const toasts: Array<Pick<ZenoxToast, "title" | "message">> = []
+    const detect = createKeywordDetectorHook((t) => toasts.push({ title: t.title, message: t.message }))
+    const run = (sessionID: string, text: string) => {
+      const event = { sessionID, prompt: { text } }
+      detect(event)
+      return event.prompt.text
     }
-    const secondOutput = {
-      parts: [{ type: "text", text: "please do deep research" }],
-      message: {},
-    }
+    return { toasts, run }
+  }
 
-    await hook["chat.message"]?.({ sessionID: "keyword-session" }, firstOutput)
-    await hook["chat.message"]?.({ sessionID: "keyword-session" }, secondOutput)
-
-    expect(firstOutput.parts[0]?.text).toContain("DEEP RESEARCH MODE")
-    expect(secondOutput.parts[0]?.text).toBe("please do deep research")
-    expect(toasts).toHaveLength(1)
-    expect(toasts[0]).toEqual({
-      title: "🔬 Deep Research Mode",
-      message: "Comprehensive exploration enabled. Background agents will fire.",
-    })
-  })
-
-  test("re-injects keyword context for a different session", async () => {
-    const toasts: Array<{ title: string; message: string }> = []
-    const hook = createKeywordDetectorHook({
-      client: {
-        tui: {
-          showToast: async ({ body }: { body: { title: string; message: string } }) => {
-            toasts.push({ title: body.title, message: body.message })
-            return true
-          },
-        },
-      },
-    } as never)
-
-    const firstSessionOutput = {
-      parts: [{ type: "text", text: "please do deep research" }],
-      message: {},
-    }
-    const secondSessionOutput = {
-      parts: [{ type: "text", text: "please do deep research" }],
-      message: {},
-    }
-
-    await hook["chat.message"]?.({ sessionID: "keyword-session-a" }, firstSessionOutput)
-    await hook["chat.message"]?.({ sessionID: "keyword-session-b" }, secondSessionOutput)
-
-    expect(firstSessionOutput.parts[0]?.text).toContain("DEEP RESEARCH MODE")
-    expect(secondSessionOutput.parts[0]?.text).toContain("DEEP RESEARCH MODE")
-    expect(toasts).toHaveLength(2)
-  })
-
-  test("injects different keyword contexts within the same session", async () => {
-    const toasts: Array<{ title: string; message: string }> = []
-    const hook = createKeywordDetectorHook({
-      client: {
-        tui: {
-          showToast: async ({ body }: { body: { title: string; message: string } }) => {
-            toasts.push({ title: body.title, message: body.message })
-            return true
-          },
-        },
-      },
-    } as never)
-
-    const deepResearchOutput = {
-      parts: [{ type: "text", text: "please do deep research" }],
-      message: {},
-    }
-    const reviewOutput = {
-      parts: [{ type: "text", text: "please review this implementation" }],
-      message: {},
-    }
-
-    await hook["chat.message"]?.({ sessionID: "keyword-session-mixed" }, deepResearchOutput)
-    await hook["chat.message"]?.({ sessionID: "keyword-session-mixed" }, reviewOutput)
-
-    expect(deepResearchOutput.parts[0]?.text).toContain("DEEP RESEARCH MODE")
-    expect(reviewOutput.parts[0]?.text).toContain("REVIEW MODE")
+  test("injects a keyword context once per session and keyword set", () => {
+    const { toasts, run } = hook()
+    expect(run("keyword-session", "please do deep research")).toContain("DEEP RESEARCH MODE")
+    expect(run("keyword-session", "please do deep research")).toBe("please do deep research")
     expect(toasts).toEqual([
       {
         title: "🔬 Deep Research Mode",
         message: "Comprehensive exploration enabled. Background agents will fire.",
       },
-      {
-        title: "🔎 Review Mode",
-        message: "Code review via Oracle activated. Critical issues will be surfaced.",
-      },
     ])
+  })
+
+  test("re-injects keyword context for a different session", () => {
+    const { toasts, run } = hook()
+    expect(run("a", "please do deep research")).toContain("DEEP RESEARCH MODE")
+    expect(run("b", "please do deep research")).toContain("DEEP RESEARCH MODE")
+    expect(toasts).toHaveLength(2)
+  })
+
+  test("injects different keyword contexts within the same session", () => {
+    const { toasts, run } = hook()
+    expect(run("mixed", "please do deep research")).toContain("DEEP RESEARCH MODE")
+    expect(run("mixed", "please review this implementation")).toContain("REVIEW MODE")
+    expect(toasts.map((t) => t.title)).toEqual(["🔬 Deep Research Mode", "🔎 Review Mode"])
+  })
+
+  test("blueprint keyword injects the plan-lock pipeline", () => {
+    const { toasts, run } = hook()
+    const text = run("bp", "let's blueprint this feature before writing code")
+    expect(text).toContain("BLUEPRINT MODE")
+    expect(text).toContain("Done when:")
+    expect(toasts.at(-1)?.title).toBe("📐 Blueprint Mode")
+  })
+
+  test("keyword contexts use V2 tool names", () => {
+    const { run } = hook()
+    const review = run("r", "code review please")
+    expect(review).toContain('subagent(\n  agent: "oracle"')
+    expect(review).not.toContain("subagent_type")
+    expect(review).not.toContain("bash(")
   })
 })

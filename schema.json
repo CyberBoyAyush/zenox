@@ -55,7 +55,7 @@
     },
     "disabled_skills": {
       "type": "array",
-      "description": "List of bundled skills to NOT auto-install/sync (e.g. 'frontend-design', 'grill-me')",
+      "description": "List of bundled skills to NOT register (e.g. 'frontend-design', 'grill-me')",
       "items": {
         "type": "string",
         "enum": ["frontend-design", "grill-me"]
@@ -64,11 +64,11 @@
     },
     "auto_update": {
       "type": "object",
-      "description": "Auto-update behavior",
+      "description": "Startup toast behavior (OpenCode V2 updates the plugin itself)",
       "properties": {
         "show_startup_toast": {
           "type": "boolean",
-          "description": "Show the startup version toast on session start (default: true)",
+          "description": "Show the zenox version toast when the terminal UI starts (default: true)",
           "default": true
         }
       },

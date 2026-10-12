@@ -1,8 +1,7 @@
 export {
-  syncBundledSkills,
-  getGlobalSkillsDir,
+  loadBundledSkills,
   findBundledSkillsDir,
   readPackageVersion,
-  type SkillSyncResult,
-  type SyncOptions,
-} from "./sync"
+  parseSkillMarkdown,
+  type BundledSkill,
+} from "./bundled"

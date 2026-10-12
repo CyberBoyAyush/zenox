@@ -5,7 +5,7 @@
 <h1 align="center">ZENOX</h1>
 
 <p align="center">
-  <strong>Intelligent agent orchestration for OpenCode</strong>
+  <strong>Intelligent agent orchestration for OpenCode V2</strong>
 </p>
 
 <p align="center">
@@ -15,21 +15,20 @@
 
 ---
 
+> **Zenox 2.x requires OpenCode V2** (`@opencode/cli` 2.x, including OpenChamber 2.x). Still on OpenCode V1? Pin `"zenox@1.8.1"` in your `plugin` array.
+
 Zenox supercharges [OpenCode](https://opencode.ai) with specialized AI agents that handle different aspects of development. Instead of one agent doing everything, you get a team of experts — each optimized for their domain.
 
 ## Features
 
 - **5 Specialized Agents** — Explorer, Librarian, Oracle, UI Planner, Inspector
 - **Verification Loop** — Inspector runs your real checks and reports PASS/FAIL ground truth, not vibes
-- **Bundled Skills** — Auto-installs `frontend-design` & `grill-me`, auto-updated with Zenox
+- **Bundled Skills** — `frontend-design` & `grill-me`, registered in memory and updated with Zenox
 - **Hardened Background Tasks** — Parallel agents with concurrency limits, a per-task timeout, and a `background_list` recovery tool
 - **Thinking Mode Variants** — Configure thinking levels (high, xhigh, max) per agent
 - **Keyword Triggers** — `ultrawork`, `deep research`, `explore codebase`, `review`, `blueprint`
-- **Session History** — Query past sessions to learn from previous work
-- **Code Intelligence** — Search symbols via LSP
-- **Project Guidelines Auto-Update** — Automatically keeps AGENTS.md and CLAUDE.md up-to-date
-- **Todo Continuation** — Auto-reminds when tasks are incomplete (and stays quiet while background agents are working)
-- **Auto-Updates** — Plugin and bundled skills update automatically; toast on new version
+- **Project Guidelines Auto-Update** — Automatically keeps AGENTS.md (and an existing CLAUDE.md) up-to-date
+- **Toasts** — Background, keyword and version toasts in the OpenCode terminal UI
 
 ## Why Zenox?
 
@@ -46,22 +45,25 @@ The main agent automatically delegates to specialists when needed. You don't hav
 ## Quick Start
 
 ```bash
-bunx zenox install
+opencode plugin add zenox
+# or: bunx zenox install   (adds "zenox" to the "plugins" array and lets you pick models)
 ```
 
-That's it. Restart OpenCode and the agents are ready.
+That's it. Restart OpenCode (`opencode service restart`) and the agents are ready.
+
+The package also exports a terminal plugin (`zenox/tui`) that OpenCode loads automatically to show Zenox toasts.
 
 ## Agents
 
 | Agent | What it does | Default Model |
 |-------|-------------|---------------|
 | **Explorer** | Codebase grep, file discovery, pattern matching | `claude-haiku-4-5` |
-| **Librarian** | Library research, docs lookup, GitHub examples | `claude-sonnet-4-6` |
+| **Librarian** | Library research, docs lookup, GitHub examples | `claude-sonnet-5-5` |
 | **Oracle** | Architecture decisions, debugging strategy, code review | `gpt-5.6-sol` (variant medium) |
 | **UI Planner** | Frontend design, CSS, animations, visual polish | `claude-opus-4-8` |
 | **Inspector** | Runs tests/build/lint, reports PASS/FAIL/PARTIAL/BLOCKED ground truth | `claude-sonnet-5` |
 
-All five agents are **read-only except UI Planner** (which writes/edits code) and **Inspector** (which can run `bash` to execute checks — but still cannot write or edit). Deny rules are declared explicitly per agent rather than relying on omission, since OpenCode's tool config is default-allow.
+All five agents are **read-only except UI Planner** (which writes/edits code) and **Inspector** (which can run shell commands to execute checks — but still cannot edit). Deny rules are declared explicitly per agent as ordered V2 permissions, since OpenCode tools are allowed by default.
 
 ### How delegation works
 
@@ -90,13 +92,13 @@ You: "Add rate limiting to the API"
 Implementing something isn't the same as proving it works. Inspector closes that gap:
 
 1. After a non-trivial change, the main agent delegates to Inspector with an explicit **`Done when:`** line — the exact check command(s) that prove the work (tests, typecheck, lint, build).
-2. Inspector **runs it for real** via `bash` — it never edits, fixes, or refactors. It only observes and reports.
+2. Inspector **runs it for real** via the shell tool — it never edits, fixes, or refactors. It only observes and reports.
 3. It returns a structured verdict: **PASS**, **PARTIAL** (the check passed but doesn't cover the full Done-when), **FAIL**, or **BLOCKED** (can't even run the check — missing deps, broken env).
 4. On FAIL, it also emits a **stable failure signature** — deterministic across re-runs of the same failure, excluding timestamps/paths/ports. If a fix attempt produces the *same* signature again, that's a sign of no progress, and the main agent escalates to **Oracle** instead of retrying blindly.
 
 ```
 Build agent: implements a feature
-  → task(subagent_type: "inspector", prompt: "Done when: bun test && bun run typecheck")
+  → subagent(agent: "inspector", prompt: "Done when: bun test && bun run typecheck")
   → Inspector runs both, returns:
       status: FAIL
       signature: "auth.test.ts:42:TypeError-cannot-read-token"
@@ -105,7 +107,7 @@ Build agent: implements a feature
   → PASS → done, reported to you
 ```
 
-Inspector's tools are strictly read + `bash` — it cannot write or edit files, so a bad verdict can never turn into a bad fix by the same agent that would be grading itself.
+Inspector's tools are strictly read + shell — it cannot write or edit files, so a bad verdict can never turn into a bad fix by the same agent that would be grading itself.
 
 ## Keyword Triggers
 
@@ -155,29 +157,16 @@ Zenox bundles [OpenCode Agent Skills](https://opencode.ai/docs/skills) — focus
 | **frontend-design** | Anthropic's official design philosophy for distinctive, production-grade UI that avoids generic "AI slop" aesthetics. Used by UI Planner. |
 | **grill-me** | Stress-tests a plan/design by interviewing you relentlessly, one decision at a time. |
 
-### How skills are installed — fully automatic
+### How skills are loaded — fully automatic
 
-You **never** need a manual step to get skills:
-
-- **On `zenox install`** — skills are copied to `~/.config/opencode/skills/`.
-- **On every startup** — when Zenox auto-updates (or any time the plugin loads), it re-syncs the bundled skills so they always match the installed Zenox version. **No `zenox install` re-run needed.**
-
-OpenCode auto-discovers `SKILL.md` files in that directory and exposes them to agents. The agent loads one with `skill({ name: "frontend-design" })`.
+Zenox registers its bundled skills **in memory** when the plugin loads (OpenCode V2 `ctx.skill`). Nothing is copied into your config directory, and they always match the installed Zenox version. The agent loads one with `skill({ name: "frontend-design" })`.
 
 ### Your own skills are never touched
 
-Zenox only manages skill folders it created itself (tracked via a `.zenox.json` manifest):
-
-- A skill you installed yourself is **never modified or removed**.
-- If you already have a skill named `frontend-design` or `grill-me`, Zenox **leaves it alone** — it will not override it.
-- If you edit a Zenox-managed skill, your edits are **preserved** (Zenox detects the change and skips it).
-
-### Manage skills
+If you already have a skill with the same name (for example a copy installed by Zenox 1.x in `~/.config/opencode/skills/`), Zenox **leaves it alone** and does not register its own version. Delete your copy to use the bundled one.
 
 ```bash
-bunx zenox skills          # Install/update bundled skills
-bunx zenox skills list     # List bundled skills
-bunx zenox skills update   # Same as install (re-sync)
+bunx zenox skills          # List bundled skills
 ```
 
 Disable bundled skills entirely in `zenox.json` (see [Configuration](#disable-agents-mcps-or-skills)).
@@ -205,58 +194,20 @@ background_task(agent="librarian", description="JWT best practices", prompt="...
 
 **Notifications are precise.** Each finished task is only ever included in one "all complete" summary — no duplicate messages if the notification path fires more than once for the same session.
 
+Completion notices are added to the parent session as messages (partial notices without starting a turn; the final "all complete" notice starts one). Background tasks run as **child sessions** of the session that launched them, with the native `subagent` tool and `background_task` denied inside them so they can't fan out recursively.
+
 ### Toast Notifications
 
-Zenox shows toast notifications for background task events:
+Zenox shows toast notifications for background task events (in the OpenCode terminal UI, via the `zenox/tui` plugin):
 
 - ⚡ **Task Launched** — Shows task description and agent
 - ✅ **Task Completed** — Shows duration and remaining count
 - 🎉 **All Complete** — Shows summary of all finished tasks
 - ❌ **Task Failed** — Shows error message (including timeouts)
 
-## Session History
-
-Query past sessions to learn from previous work:
-
-| Tool | What it does |
-|------|--------------|
-| `session_list` | List recent sessions to find relevant past work |
-| `session_search` | Search messages across sessions for how something was done |
-
-```
-You: "How did we implement auth last time?"
-→ session_search({ query: "authentication" })
-→ Finds excerpts from past sessions where auth was discussed
-```
-
-## Code Intelligence
-
-Search for symbols via LSP (Language Server Protocol):
-
-| Tool | What it does |
-|------|--------------|
-| `find_symbols` | Search for functions, classes, variables by name |
-| `lsp_status` | Check which language servers are running |
-
-```
-You: "Find where handleLogin is defined"
-→ find_symbols({ query: "handleLogin" })
-→ Returns: Function in src/auth/handlers.ts, line 42
-```
-
-## Todo Continuation
-
-Zenox automatically reminds you to continue working when:
-
-- You have incomplete tasks in your todo list
-- The session goes idle
-- There's been enough time since the last reminder (10 second cooldown)
-
-This keeps you on track without manual intervention. The agent will be prompted to continue until all todos are complete or blocked.
-
 ## Project Guidelines Auto-Update
 
-Zenox automatically keeps your `AGENTS.md` and `CLAUDE.md` files up-to-date with important decisions, patterns, and conventions.
+Zenox automatically keeps your `AGENTS.md` (and `CLAUDE.md`, if your project already has one) up-to-date with important decisions, patterns, and conventions.
 
 ### The Problem
 
@@ -339,7 +290,7 @@ Available variants (model-dependent):
 - `xhigh` — Extra high thinking
 - `max` — Maximum reasoning depth
 
-Variants are applied safely — if an agent doesn't exist or the model doesn't support the variant, it gracefully falls back.
+Zenox registers each agent with the V2 model reference `provider/model#variant`. A `variant` without a `model` applies to the agent's default model.
 
 <a id="disable-agents-mcps-or-skills"></a>
 ### Disable Agents, MCPs, or Skills
@@ -354,7 +305,7 @@ Variants are applied safely — if an agent doesn't exist or the model doesn't s
 
 `disabled_agents` accepts any of: `explorer`, `librarian`, `oracle`, `ui-planner`, `inspector`.
 
-A skill listed in `disabled_skills` is never installed or synced. If it was previously installed by Zenox, it is left in place (Zenox won't auto-remove your files) — delete the folder manually if you want it gone.
+A skill listed in `disabled_skills` is not registered. Copies left on disk by Zenox 1.x are not removed — delete the folder manually if you want it gone.
 
 ### Background Task Limits
 
@@ -389,26 +340,28 @@ Zenox auto-loads these tools for agents to use:
 ## CLI
 
 ```bash
-bunx zenox install          # Add to opencode.json + configure models + install skills
+bunx zenox install          # Add to the opencode.json "plugins" array + configure models
 bunx zenox install --no-tui # Non-interactive (uses defaults)
 bunx zenox config           # Reconfigure models anytime
 bunx zenox mcp              # Enable/disable MCP servers
-bunx zenox skills           # Install/update bundled skills
-bunx zenox skills list      # List bundled skills
+bunx zenox update           # Runs `opencode plugin update zenox`
+bunx zenox skills           # List bundled skills
 bunx zenox --help           # Show all commands
 ```
 
-## Auto-Update
+## Updates
 
-Zenox checks for updates on startup. When a new version drops:
+OpenCode V2 manages plugin packages: unpinned plugins are checked for updates at startup, and `opencode plugin update zenox` (or `bunx zenox update`) updates on demand. Exact versions such as `"zenox@2.0.0"` stay pinned. After an upgrade, Zenox shows a `zenox updated vA → vB` toast; disable the startup toast with `"auto_update": { "show_startup_toast": false }`.
 
-1. You see a toast notification
-2. Bun cache is invalidated
-3. Restart to get the update
+## Not available on OpenCode V2 (yet)
 
-When the new version loads, **bundled skills are re-synced automatically** — you don't need to run `zenox install` again to get updated skills.
-
-Pin a version to disable: `"zenox@1.2.1"` in your plugins array.
+| Zenox 1.x feature | Status |
+|---|---|
+| `find_symbols`, `lsp_status` | Removed — OpenCode V2 has no LSP runtime yet ([anomalyco/opencode#38528](https://github.com/anomalyco/opencode/issues/38528)) |
+| `session_list`, `session_search` | Removed — V2 plugins cannot list sessions |
+| Todo continuation reminders | Removed — V2 has no todo tool ([anomalyco/opencode#42421](https://github.com/anomalyco/opencode/issues/42421)) |
+| Per-agent `temperature` | Removed — V2 does not send agent request settings yet |
+| npm update check / plugin cache clearing | Replaced by OpenCode's own plugin updates |
 
 ## Credits
 

@@ -5,11 +5,6 @@
 
 export type TaskStatus = "running" | "completed" | "failed" | "cancelled"
 
-export interface ParentModel {
-  providerID: string
-  modelID: string
-}
-
 export interface BackgroundTask {
   id: string
   sessionID: string
@@ -21,8 +16,6 @@ export interface BackgroundTask {
   startedAt: Date
   completedAt?: Date
   error?: string
-  parentAgent?: string // Agent that was active when task was launched (plan/build)
-  parentModel?: ParentModel // Model that was active when task was launched
   /** True once this finished task has been included in an "ALL COMPLETE" notification. */
   notified?: boolean
   /**
@@ -41,8 +34,6 @@ export interface LaunchInput {
   prompt: string
   description: string
   parentSessionID: string
-  parentAgent?: string // Agent that was active when task was launched (plan/build)
-  parentModel?: ParentModel // Model that was active when task was launched
 }
 
 export interface CompletionNotification {
@@ -51,6 +42,35 @@ export interface CompletionNotification {
   completedTasks: BackgroundTask[]
   runningCount: number
   parentSessionID: string // Session that owns these tasks (notification target)
-  parentAgent?: string // Agent to return notification to (preserves mode)
-  parentModel?: ParentModel // Model to return notification to (preserves model)
+}
+
+/** Message text the manager reads back from a finished child session. */
+export interface SessionMessageText {
+  role: "assistant" | "other"
+  /** Text parts of the message, in order. */
+  texts: string[]
+}
+
+/**
+ * The only OpenCode operations the background system needs. Implemented by the
+ * V2 host (src/host/v2.ts); tests provide an in-memory fake.
+ */
+export interface BackgroundSessionHost {
+  /** Create a child session of `parentSessionID` running `agent` (when given). Returns its ID. */
+  createChildSession(input: {
+    parentSessionID: string
+    agent?: string
+    title: string
+  }): Promise<string>
+  /** Send the task prompt into a child session and start its agent loop. */
+  prompt(sessionID: string, text: string): Promise<void>
+  /**
+   * Resolve once the child's agent loop has finished. `isActive` turns false
+   * when the task was cancelled/timed out, so the wait can stop early.
+   */
+  waitForCompletion(sessionID: string, isActive: () => boolean): Promise<void>
+  /** Stop a session's active execution. */
+  interrupt(sessionID: string): Promise<void>
+  /** Read a session's messages, oldest first. */
+  readMessages(sessionID: string): Promise<SessionMessageText[]>
 }

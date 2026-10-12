@@ -1,7 +1,7 @@
 /**
  * Background Task System
  *
- * Provides parallel agent execution via fire-and-forget background sessions.
+ * Provides parallel agent execution via fire-and-forget child sessions.
  */
 
 export {
@@ -10,11 +10,17 @@ export {
   DEFAULT_BACKGROUND_LIMITS,
   type BackgroundLimits,
 } from "./manager"
-export { createBackgroundTools, type BackgroundTools } from "./tools"
+export {
+  addBackgroundTools,
+  launchBackgroundTask,
+  cancelBackgroundTask,
+  listBackgroundTasks,
+} from "./tools"
 export type {
   BackgroundTask,
+  BackgroundSessionHost,
+  SessionMessageText,
   TaskStatus,
   LaunchInput,
   CompletionNotification,
-  ParentModel,
 } from "./types"

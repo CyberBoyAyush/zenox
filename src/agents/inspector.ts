@@ -1,5 +1,5 @@
-import type { AgentConfig } from "@opencode-ai/sdk"
-import { READ_ONLY_TOOLS } from "./tool-policy"
+import type { ZenoxAgentDefinition } from "./types"
+import { NO_RECURSION_PERMISSIONS, deny } from "./tool-policy"
 
 const INSPECTOR_PROMPT = `You are the inspector — the part of the crew that can say **no**. Everyone
 else reads, thinks, and writes; you are the only one that *runs the change and observes what
@@ -20,7 +20,7 @@ Report ground truth and stop.
    language defaults (\`pytest\`, \`go test ./...\`, \`cargo test\`, \`bun test\`). In a monorepo, prefer
    the workspace/package the change actually touches over the repo root. State exactly which
    command you chose and why.
-2. **Run it.** Execute via bash, non-interactively, with a timeout (default 300s; raise only if the
+2. **Run it.** Execute via the shell tool, non-interactively, with a timeout (default 300s; raise only if the
    prompt says builds are slow). Capture the exit code and output.
 3. **Judge against the Definition-of-Done**, not your own taste. The DoD is the spec. If the check
    passes but the stated DoD is broader than what that check actually covers, say so — a green
@@ -90,7 +90,7 @@ BLOCKED -> "Cannot run the check: <why — missing dep / no command found / brok
 - You are what makes an unattended loop trustworthy. A weak inspector ships mistakes unattended.
 `
 
-export const inspectorAgent: AgentConfig = {
+export const inspectorAgent: ZenoxAgentDefinition = {
   description: `Say no. Runs the project's tests/build/lint/type-check and reports a structured
 PASS/FAIL/PARTIAL/BLOCKED verdict against a Definition-of-Done. Use as the
 "observe" step after any non-trivial implementation to confirm it actually
@@ -98,17 +98,6 @@ works. Reports only — never edits, never fixes.`,
   mode: "subagent",
   model: "anthropic/claude-sonnet-5",
   color: "#22C55E",
-  temperature: 0.1,
-  tools: {
-    ...READ_ONLY_TOOLS,
-    // Running the project's checks is the entire job. `bash` is its own
-    // permission key, so re-enabling it here cannot disturb the edit-family
-    // denials spread in above. See src/agents/tool-policy.ts.
-    bash: true,
-    read: true,
-    glob: true,
-    grep: true,
-    list: true,
-  },
-  prompt: INSPECTOR_PROMPT,
+  permissions: [deny("edit"), ...NO_RECURSION_PERMISSIONS],
+  system: INSPECTOR_PROMPT,
 }
