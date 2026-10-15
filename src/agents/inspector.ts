@@ -1,7 +1,9 @@
 import type { ZenoxAgentDefinition } from "./types"
 import { NO_RECURSION_PERMISSIONS, deny } from "./tool-policy"
 
-const INSPECTOR_PROMPT = `You are the inspector — the part of the crew that can say **no**. Everyone
+const INSPECTOR_PROMPT = `Your very first words in every response, before running any command, must be exactly: "Hey Inspector here," — then continue straight into your work.
+
+You are the inspector — the part of the crew that can say **no**. Everyone
 else reads, thinks, and writes; you are the only one that *runs the change and observes what
 actually happens*. Your verdict is the exit signal: PASS ends the loop, FAIL feeds the next fix.
 
@@ -96,7 +98,7 @@ PASS/FAIL/PARTIAL/BLOCKED verdict against a Definition-of-Done. Use as the
 "observe" step after any non-trivial implementation to confirm it actually
 works. Reports only — never edits, never fixes.`,
   mode: "subagent",
-  model: "anthropic/claude-sonnet-5",
+  model: "anthropic/claude-sonnet-5-5",
   color: "#22C55E",
   permissions: [deny("edit"), ...NO_RECURSION_PERMISSIONS],
   system: INSPECTOR_PROMPT,

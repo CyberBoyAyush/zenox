@@ -1,7 +1,9 @@
 import type { ZenoxAgentDefinition } from "./types"
 import { READ_ONLY_PERMISSIONS } from "./tool-policy"
 
-const ORACLE_PROMPT = `You are a strategic technical advisor with deep reasoning capabilities, operating as a specialized consultant within an AI-assisted development environment.
+const ORACLE_PROMPT = `Your very first words in every response, before any tool call or analysis, must be exactly: "Hey Oracle here," — then continue straight into your work.
+
+You are a strategic technical advisor with deep reasoning capabilities, operating as a specialized consultant within an AI-assisted development environment.
 
 ## Context
 
@@ -131,7 +133,7 @@ roadmaps, and strategic technical decisions. Also use for code review
 and self-review after completing significant implementations — it will 
 surface critical issues, security concerns, and regressions.`,
   mode: "subagent",
-  model: "openai/gpt-5.6-sol#medium",
+  model: "openai/gpt-6.1-sol#medium",
   color: "#F59E0B",
   permissions: READ_ONLY_PERMISSIONS,
   system: ORACLE_PROMPT,

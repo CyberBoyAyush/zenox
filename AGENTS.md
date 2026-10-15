@@ -56,9 +56,9 @@ bun run typecheck    # Type check without emitting
 |-------|---------|---------------|
 | explorer | Codebase search, file discovery | claude-haiku-4-5 |
 | librarian | Library research, docs lookup | claude-sonnet-5-5 |
-| oracle | Architecture decisions, debugging | gpt-5.6-sol |
-| ui-planner | Frontend design, CSS, animations | claude-opus-4-8 |
-| inspector | Runs checks, reports PASS/FAIL ground truth | claude-sonnet-5 |
+| oracle | Architecture decisions, debugging | gpt-6.1-sol |
+| ui-planner | Frontend design, CSS, animations | claude-opus-5-5 |
+| inspector | Runs checks, reports PASS/FAIL ground truth | claude-sonnet-5-5 |
 
 ## Configuration
 

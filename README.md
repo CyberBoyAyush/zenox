@@ -59,9 +59,9 @@ The package also exports a terminal plugin (`zenox/tui`) that OpenCode loads aut
 |-------|-------------|---------------|
 | **Explorer** | Codebase grep, file discovery, pattern matching | `claude-haiku-4-5` |
 | **Librarian** | Library research, docs lookup, GitHub examples | `claude-sonnet-5-5` |
-| **Oracle** | Architecture decisions, debugging strategy, code review | `gpt-5.6-sol` (variant medium) |
-| **UI Planner** | Frontend design, CSS, animations, visual polish | `claude-opus-4-8` |
-| **Inspector** | Runs tests/build/lint, reports PASS/FAIL/PARTIAL/BLOCKED ground truth | `claude-sonnet-5` |
+| **Oracle** | Architecture decisions, debugging strategy, code review | `gpt-6.1-sol` (variant medium) |
+| **UI Planner** | Frontend design, CSS, animations, visual polish | `claude-opus-5-5` |
+| **Inspector** | Runs tests/build/lint, reports PASS/FAIL/PARTIAL/BLOCKED ground truth | `claude-sonnet-5-5` |
 
 All five agents are **read-only except UI Planner** (which writes/edits code) and **Inspector** (which can run shell commands to execute checks — but still cannot edit). Deny rules are declared explicitly per agent as ordered V2 permissions, since OpenCode tools are allowed by default.
 
@@ -258,8 +258,8 @@ Config saves to `~/.config/opencode/zenox.json`:
 {
   "agents": {
     "explorer": { "model": "anthropic/claude-sonnet-4-6" },
-    "oracle": { "model": "openai/gpt-5.6-sol" },
-    "inspector": { "model": "anthropic/claude-sonnet-5" }
+    "oracle": { "model": "openai/gpt-6.1-sol" },
+    "inspector": { "model": "anthropic/claude-sonnet-5-5" }
   }
 }
 ```

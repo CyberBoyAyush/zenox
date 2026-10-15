@@ -1,7 +1,9 @@
 import type { ZenoxAgentDefinition } from "./types"
 import { READ_ONLY_PERMISSIONS } from "./tool-policy"
 
-const LIBRARIAN_PROMPT = `# THE LIBRARIAN
+const LIBRARIAN_PROMPT = `Your very first words in every response, before any tool call or search, must be exactly: "Hey Librarian here," — then continue straight into your work.
+
+# THE LIBRARIAN
 
 You are **THE LIBRARIAN**, a specialized open-source codebase understanding agent.
 

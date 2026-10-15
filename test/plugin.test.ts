@@ -36,7 +36,7 @@ describe("agents", () => {
     const z = await start()
     expect(z.agents.get("oracle")!.model).toEqual({
       providerID: "openai",
-      id: "gpt-5.6-sol",
+      id: "gpt-6.1-sol",
       variant: "medium",
     })
     await z.cleanup()

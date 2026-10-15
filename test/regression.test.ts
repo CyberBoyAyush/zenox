@@ -26,8 +26,8 @@ describe("model resolution", () => {
 })
 
 describe("prompt regressions", () => {
-  test("oracle defaults to gpt-5.6-sol medium", () => {
-    expect(oracleAgent.model).toBe("openai/gpt-5.6-sol#medium")
+  test("oracle defaults to gpt-6.1-sol medium", () => {
+    expect(oracleAgent.model).toBe("openai/gpt-6.1-sol#medium")
   })
 
   test("oracle prompt distinguishes grounded analysis from review mode", () => {
@@ -86,7 +86,7 @@ describe("prompt regressions", () => {
     expect(uiPlannerAgent.system).toContain("frontend-design")
     // Inline skill body should be gone (now loaded via the skill tool)
     expect(uiPlannerAgent.system).not.toContain("## NEVER Use Generic AI Aesthetics")
-    expect(uiPlannerAgent.model).toBe("anthropic/claude-opus-4-8")
+    expect(uiPlannerAgent.model).toBe("anthropic/claude-opus-5-5")
     expect(uiPlannerAgent.system).toContain("override the skill's greenfield aesthetic guidance")
     expect(uiPlannerAgent.system).toContain("reduced motion")
     expect(uiPlannerAgent.system).toContain("materially benefits from a package")

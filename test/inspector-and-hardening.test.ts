@@ -47,7 +47,7 @@ describe("inspector agent", () => {
 
   test("is a subagent with its model", () => {
     expect(inspectorAgent.mode).toBe("subagent")
-    expect(inspectorAgent.model).toBe("anthropic/claude-sonnet-5")
+    expect(inspectorAgent.model).toBe("anthropic/claude-sonnet-5-5")
   })
 })
 

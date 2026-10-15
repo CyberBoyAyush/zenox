@@ -22,15 +22,15 @@
         },
         "oracle": {
           "$ref": "#/$defs/agentOverride",
-          "description": "Strategic technical advisor (default: openai/gpt-5.6-sol, variant medium)"
+          "description": "Strategic technical advisor (default: openai/gpt-6.1-sol, variant medium)"
         },
         "ui-planner": {
           "$ref": "#/$defs/agentOverride",
-          "description": "Designer-turned-developer for UI/UX (default: anthropic/claude-opus-4-8)"
+          "description": "Designer-turned-developer for UI/UX (default: anthropic/claude-opus-5-5)"
         },
         "inspector": {
           "$ref": "#/$defs/agentOverride",
-          "description": "Runs project checks and reports PASS/FAIL/PARTIAL/BLOCKED ground truth (default: anthropic/claude-sonnet-5)"
+          "description": "Runs project checks and reports PASS/FAIL/PARTIAL/BLOCKED ground truth (default: anthropic/claude-sonnet-5-5)"
         }
       },
       "additionalProperties": false

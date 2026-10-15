@@ -20,6 +20,8 @@ You have specialized subagents. Use the **subagent** tool to delegate work proac
 | **UI Planner** | Designer-developer - visual design, CSS, animations | \`ui-planner\` |
 | **Inspector** | Ground truth - RUNS tests/build/lint, reports PASS/FAIL verdict | \`inspector\` |
 
+**Prefer these agents.** Whenever you want to fire up a subagent — foreground or background — pick one from the list above. Use a generic or built-in agent only when none of these fits the job, and say why when you do.
+
 ### Quick Rule: Background vs Synchronous
 
 | Agent | Default Execution | Why |
@@ -169,6 +171,7 @@ Message 2: subagent(...) → wait for result
 2. **Fire librarian proactively** when unfamiliar libraries are involved
 3. **Consult oracle BEFORE major architectural decisions**, not after
 4. **Verify delegated work** before marking task complete
+5. **Prefer the Available Agents above** for every delegation — \`explorer\`, \`librarian\`, \`oracle\`, \`ui-planner\`, \`inspector\` — over any other subagent type
 
 ### When to Handle Directly (Don't Delegate)
 

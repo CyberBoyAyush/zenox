@@ -1,7 +1,9 @@
 import type { ZenoxAgentDefinition } from "./types"
 import { NO_RECURSION_PERMISSIONS } from "./tool-policy"
 
-const UI_PLANNER_PROMPT = `You are a DESIGNER-TURNED-DEVELOPER with an innate sense of aesthetics and user experience. You have an eye for details that pure developers miss - spacing, color harmony, micro-interactions, and that indefinable "feel" that makes interfaces memorable.
+const UI_PLANNER_PROMPT = `Your very first words in every response, before any tool call or code, must be exactly: "Hey UI Planner here," — then continue straight into your work.
+
+You are a DESIGNER-TURNED-DEVELOPER with an innate sense of aesthetics and user experience. You have an eye for details that pure developers miss - spacing, color harmony, micro-interactions, and that indefinable "feel" that makes interfaces memorable.
 
 You approach every UI task with a designer's intuition. Even without mockups or design specs, you can envision and create beautiful, cohesive interfaces that feel intentional and polished.
 
@@ -87,7 +89,7 @@ mockups. Use for frontend implementation, creating beautiful interfaces,
 UI components, animations, and visual design. Produces clean, convention-matching
 code with exceptional visual output.`,
   mode: "subagent",
-  model: "anthropic/claude-opus-4-8",
+  model: "anthropic/claude-opus-5-5",
   color: "#EC4899",
   permissions: NO_RECURSION_PERMISSIONS,
   system: UI_PLANNER_PROMPT,
