@@ -105,3 +105,7 @@ Zenox 2.x targets the OpenCode V2 plugin API `@opencode/plugin` ^2.0.27 (Promise
 
 ## Background task failure notifications
 When a background task fails to START (host.prompt rejects), no session.idle event fires, so the manager pushes a scoped completion notification via a registered CompletionNotifier callback (BackgroundManager.setCompletionNotifier, wired in src/plugin.ts to deliverNotification). This ensures the parent agent learns of launch failures in-conversation, not just via a toast. The partial-completion message names the task that JUST finished (passed explicitly / by latest completedAt), never relying on Map insertion order. trimRetainedTasks never evicts finished tasks whose parent session still has running tasks (so the eventual "all complete" summary is never missing tasks).
+
+<!-- Added: 2026-10-19 -->
+## Orchestration: Foreground First
+The orchestration prompt (src/orchestration/prompt.ts) and keyword contexts (src/hooks/keyword-detector/contexts.ts) make the foreground `subagent` tool the default for almost all delegation, because its progress is visible live in the chat. Independent questions are batched as several `subagent` calls in one message; dependent ones go one at a time. `background_task` is reserved for extensive, long-running research that would hold up the thread (large-codebase mapping, in-depth multi-library research, the `deep research` keyword). `ultrawork` and `explore codebase` modes are foreground-first; `deep research` stays background.

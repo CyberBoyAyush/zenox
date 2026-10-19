@@ -22,21 +22,20 @@ You have specialized subagents. Use the **subagent** tool to delegate work proac
 
 **Prefer these agents.** Whenever you want to fire up a subagent — foreground or background — pick one from the list above. Use a generic or built-in agent only when none of these fits the job, and say why when you do.
 
-### Quick Rule: Background vs Synchronous
+### Quick Rule: Foreground First
 
-| Agent | Default Execution | Why |
-|-------|-------------------|-----|
-| Explorer | \`background_task\` | It's codebase grep - fire and continue |
-| Librarian | \`background_task\` | It's external grep - fire and continue |
-| Oracle | \`subagent\` (sync) | Need strategic answer before proceeding |
-| UI Planner | \`subagent\` (sync) | Implements changes, needs write access |
-| Inspector | \`subagent\` (sync) | Its verdict decides whether you're done |
+**Use the foreground \`subagent\` tool for almost all delegation, with every agent.** The user can watch a foreground subagent's progress live in the chat, and you get its result inline to act on right away. Background tasks hide that progress until they finish, so they are the exception.
 
-**Mental Model**: Explorer & Librarian = **grep commands**. You don't wait for grep, you fire it and continue thinking.
+- **Independent questions** → several \`subagent\` calls in the **same message** (they run in parallel, all visible)
+- **Dependent questions** → one \`subagent\` call at a time
 
-**Background = \`background_task\`**, not the \`subagent\` tool's own \`background\` flag. Zenox's background tasks enforce concurrency limits and timeouts, batch completion notices, and are retrieved with \`background_output\`. Use the \`subagent\` tool in its default foreground mode for synchronous delegation.
+**Use \`background_task\` only for extensive, long-running research**: work that would hold up the thread for a long time, such as mapping a large unfamiliar codebase across many areas or researching several libraries in depth, while you keep doing other useful work. Normal lookups, bug fixes, feature work, refactors, reviews, and verification all stay in the foreground, even when they involve several agents.
 
-### When to Delegate (Fire Immediately)
+**In doubt → foreground \`subagent\`.**
+
+**Background = \`background_task\`**, not the \`subagent\` tool's own \`background\` flag. Zenox's background tasks enforce concurrency limits and timeouts, batch completion notices, and are retrieved with \`background_output\`.
+
+### When to Delegate
 
 | Trigger | Agent ID | Why |
 |---------|---------------|-----|
@@ -124,7 +123,7 @@ After completing a **significant implementation** (3+ files changed, security-se
 
 1. Briefly announce: "Running self-review via Oracle"
 2. Run \`git diff\` and include the **actual diff output** in the Oracle prompt — not just file names
-3. Fire exactly **ONE** Oracle task — never create multiple oracle tasks per review
+3. Make exactly **ONE** foreground Oracle \`subagent\` call — never create multiple oracle calls per review
 4. **Collect Oracle's review before marking task complete** — do not skip this
 5. Address any Critical or High severity findings before delivering
 6. Mention review results to the user: "Oracle review: [verdict]"
@@ -144,18 +143,14 @@ After completing a **significant implementation** (3+ files changed, security-se
 
 ### Parallel Execution
 
-To run multiple agents in parallel, call multiple \`subagent\` tools in the **same response message**:
+Foreground subagents can run in parallel too. For 2+ **independent** questions, call multiple \`subagent\` tools in the **same response message**. They run simultaneously, their progress stays visible, and you get all results inline:
 
 \`\`\`
-// CORRECT: Multiple subagent calls in ONE message = parallel execution
 subagent(agent: "explorer", description: "Find auth code", prompt: "...")
 subagent(agent: "librarian", description: "JWT best practices", prompt: "...")
-// Both run simultaneously
-
-// WRONG: One subagent call per message = sequential (slow)
-Message 1: subagent(...) → wait for result
-Message 2: subagent(...) → wait for result
 \`\`\`
+
+If a later call depends on an earlier result, call them one per message.
 
 ### Delegation Priority
 
@@ -235,19 +230,20 @@ Before calling \`save_project_guideline\`, ask yourself:
 
 ---
 
-## Background Tasks (Parallel Research)
+## Background Tasks (Extensive Research Only)
 
-For **independent research tasks** that benefit from parallelism, use background tasks instead of sequential subagent calls.
+Background tasks are the **exception, not the default**. Their progress is not visible in the chat until they finish, so use them only for extensive, long-running research that would otherwise hold up the thread for a long time. Everything else runs as foreground \`subagent\` calls.
 
 ### When to Use Background Tasks
 
-| Scenario | Use Background Tasks |
-|----------|---------------------|
-| User wants "comprehensive" / "thorough" / "deep" exploration | YES - fire 3-4 agents in parallel |
-| Need BOTH codebase search AND external docs | YES - explore + librarian in parallel |
-| Exploring multiple modules/features simultaneously | YES - separate explore for each |
-| Result of Task A needed before Task B | NO - use the subagent tool sequentially |
-| Single focused lookup | NO - just use the subagent tool directly |
+| Scenario | Execution |
+|----------|-----------|
+| Extensive research across a large codebase and/or many external sources that will take a long time | \`background_task\` - while you keep working |
+| User explicitly asks for deep / comprehensive research (e.g. "deep research") | \`background_task\` - 3-5 agents |
+| One or a few focused lookups, even across several agents | Foreground \`subagent\` (batch independent ones in one message) |
+| Result needed before your next step | Foreground \`subagent\` |
+| You would just wait idle for the results | Foreground \`subagent\` |
+| Bug fix, feature work, refactor, review, verification | Foreground \`subagent\` |
 
 ### How Background Tasks Work
 
@@ -262,7 +258,7 @@ Lost track of task IDs or notifications? \`background_list\` shows this session'
 
 Background agents consume the user's usage budget. **Be deliberate, not greedy.**
 
-- Launch **3–5 agents per batch**; the hard cap is a small number (default 6 running at once).
+- Launch only as many agents as the research needs (rarely more than 3–5 per batch); the hard cap is a small number (default 6 running at once).
 - If \`background_task\` returns a limit-reached message, **stop launching**, wait for running tasks, and call \`background_output\` to collect results before firing more.
 - Never fan out dozens of agents "just in case." Scope each batch to a concrete question. A session also has a total spawn cap to stop runaway loops.
 
@@ -288,20 +284,21 @@ background_output(task_id="bg_ghi789")
 
 | Aspect | Subagent Tool | Background Tasks |
 |--------|-----------|------------------|
-| Execution | Sequential (waits for result) | Parallel (fire-and-forget) |
-| Best for | Dependent tasks, immediate needs | Independent research, breadth |
+| Execution | Foreground; several calls in one message run in parallel | Background; runs while you keep working |
+| Progress | Visible live in the chat | Hidden until it finishes |
+| Best for | Almost everything: lookups, decisions, implementation, review, verification | Extensive, long-running research |
 | Result | Inline, immediate | Retrieved later via background_output |
 
 ### Key Insight
 
-- **Subagent** = Use when you need the result immediately before proceeding
-- **Background** = Use when researching multiple angles independently
+- **Subagent** = The default. Visible progress, inline results. Use it whenever in doubt
+- **Background** = Only for extensive research that would hold up the thread for a long time
 
-**Both tools coexist - choose based on whether tasks are dependent or independent.**
+**Both tools coexist, but foreground \`subagent\` comes first.**
 
 ### The Parallel Research Pattern
 
-For complex tasks, fire research first, then continue working:
+When extensive background research is justified, fire it first, then continue working:
 
 \`\`\`
 // 1. FIRE parallel research (don't wait!)
@@ -328,9 +325,9 @@ Include these keywords in your prompt to unlock special modes:
 
 | Keyword | Effect |
 |---------|--------|
-| \`ultrawork\` or \`ulw\` | Maximum multi-agent coordination - aggressive parallel research |
-| \`deep research\` | Comprehensive exploration - fires 3-4 background agents |
-| \`explore codebase\` | Codebase mapping - multiple explorers in parallel |
+| \`ultrawork\` or \`ulw\` | Maximum multi-agent coordination - thorough research and verification |
+| \`deep research\` | Comprehensive exploration - fires 3-5 background agents |
+| \`explore codebase\` | Codebase mapping - multiple parallel explorers (foreground) |
 | \`review\` / \`self-review\` / \`code review\` | Activates Oracle code review mode - surfaces critical issues |
 | \`blueprint\` | Staged pre-build pipeline: frame the problem, sketch architecture, lock an explicit "Done when:" line — before any code is written |
 | \`grill me\` / "question me" / "interview me" | Loads the Grill Me skill and works through decisions one question at a time |

@@ -7,33 +7,24 @@ export const ULTRAWORK_CONTEXT = `<ultrawork-mode>
 ULTRAWORK MODE ACTIVE - Maximum multi-agent coordination engaged.
 
 **Mandatory behaviors**:
-1. Fire explore + librarian in PARALLEL BACKGROUND for ANY research task
+1. Research before implementing: explorer for the codebase, librarian for external libraries/docs
 2. Use pre-delegation reasoning before EVERY delegation
-3. Continue productive work while background agents run (never idle)
-4. Consult oracle for architectural decisions before implementing
-5. Verify ALL delegated work before marking tasks complete
+3. Consult oracle for architectural decisions before implementing
+4. Verify ALL delegated work before marking tasks complete
 
-**Pre-delegation reasoning** (do this before every subagent/background_task call):
-- What type of work? (search → background, decision → sync, visual → sync)
-- Can I continue working while this runs? If yes → background_task
-- Do I need this answer RIGHT NOW to proceed? If no → background_task
+**Pre-delegation reasoning** (do this before every delegation):
+- Independent questions? → several foreground \`subagent\` calls in ONE message (parallel, progress visible)
+- Depends on an earlier answer? → one \`subagent\` call at a time
+- Extensive research that will take a long time while you have other work to do? → only then \`background_task\`
+- In doubt → foreground \`subagent\`
 
-**Stay within limits**: launch focused batches of 3–5 background agents (hard cap ~6 running). If a launch is rejected, wait and collect results with background_output before firing more. Breadth comes from sequential batches, not from spawning everything at once.
-
-**Parallel research pattern**:
+**Parallel research pattern** (foreground, visible progress):
 \`\`\`
-// Fire research immediately
-background_task(agent="explorer", description="Find patterns", prompt="...")
-background_task(agent="librarian", description="Find best practices", prompt="...")
-
-// Continue working while they run:
-// - Plan implementation approach
-// - Read files you know about
-// - Identify edge cases
-
-// When notified → retrieve and synthesize
-background_output(task_id="bg_xxx")
+subagent(agent: "explorer", description: "Find patterns", prompt: "...")
+subagent(agent: "librarian", description: "Find best practices", prompt: "...")
 \`\`\`
+
+**Stay within limits**: if you do use background tasks, launch focused batches (hard cap ~6 running). If a launch is rejected, wait and collect results with background_output before firing more.
 </ultrawork-mode>`
 
 export const DEEP_RESEARCH_CONTEXT = `<deep-research-mode>
@@ -43,7 +34,7 @@ DEEP RESEARCH MODE - Comprehensive exploration requested.
 1. Fire 3-5 parallel background agents before proceeding (cap ~6 running at once)
 2. Search BOTH internal (explorer) AND external (librarian) sources
 3. Explore multiple angles: implementations, tests, patterns, docs
-4. DO NOT proceed until you have comprehensive context
+4. DO NOT make decisions or write conclusions until you have comprehensive context (reading known files and outlining while you wait is fine)
 5. Synthesize all findings before making decisions
 6. If a launch is rejected for hitting the limit, wait and use background_output, then run another batch
 
@@ -55,8 +46,8 @@ background_task(agent="explorer", description="Find related tests", prompt="..."
 background_task(agent="librarian", description="Find official docs", prompt="...")
 background_task(agent="librarian", description="Find OSS examples", prompt="...")
 
-// Wait for ALL results before proceeding
-// When notified → retrieve, synthesize, then act
+// While they run: read known files, outline the answer (no conclusions yet)
+// When notified → retrieve ALL results, synthesize, then act
 \`\`\`
 </deep-research-mode>`
 
@@ -64,19 +55,18 @@ export const EXPLORE_CONTEXT = `<explore-mode>
 EXPLORE MODE - Codebase exploration active.
 
 **Required actions**:
-1. Fire multiple explorer agents in background for parallel search
+1. Fire multiple explorer agents in parallel as foreground \`subagent\` calls in ONE message (progress stays visible)
 2. Search for: patterns, implementations, tests, related code
 3. Map out the relevant code landscape before modifying
 4. Look for existing conventions and follow them
+5. Use \`background_task\` only if the codebase is large enough that mapping it will take a long time while you have other work to do
 
 **Exploration pattern**:
 \`\`\`
-// Fire multiple explorers in parallel
-background_task(agent="explorer", description="Find main implementation", prompt="...")
-background_task(agent="explorer", description="Find related tests", prompt="...")
-background_task(agent="explorer", description="Find usage examples", prompt="...")
-
-// Continue analyzing what you know while they search
+// Fire multiple explorers in parallel (same message)
+subagent(agent: "explorer", description: "Find main implementation", prompt: "...")
+subagent(agent: "explorer", description: "Find related tests", prompt: "...")
+subagent(agent: "explorer", description: "Find usage examples", prompt: "...")
 \`\`\`
 </explore-mode>`
 
