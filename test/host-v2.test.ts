@@ -78,8 +78,8 @@ describe("V2 host helpers", () => {
   })
 
   test("parseModelRef handles variants and nested model IDs", () => {
-    expect(parseModelRef("openai/gpt-5.6-sol#medium")).toEqual({ providerID: "openai", id: "gpt-5.6-sol", variant: "medium" })
-    expect(parseModelRef("openrouter/anthropic/claude")).toEqual({ providerID: "openrouter", id: "anthropic/claude" })
+    expect(parseModelRef("openai/gpt-5.6-sol#medium") as unknown).toEqual({ providerID: "openai", id: "gpt-5.6-sol", variant: "medium" })
+    expect(parseModelRef("openrouter/anthropic/claude") as unknown).toEqual({ providerID: "openrouter", id: "anthropic/claude" })
     expect(parseModelRef("bad")).toBeUndefined()
   })
 })

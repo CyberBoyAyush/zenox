@@ -1,0 +1,114 @@
+name: Release
+
+# After CI passes on a push to main, stage the package on npm when package.json has a new
+# version. Staging uses npm trusted publishing (OIDC, no token) and goes live only after a
+# maintainer approves it with 2FA: `npm stage approve <stage-id>` or npmjs.com.
+# Trusted publishing needs GitHub-hosted runners, so these jobs do not run on instabox.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  detect:
+    name: detect version bump
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      release: ${{ steps.version.outputs.release }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - id: version
+        run: |
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          previous=$(git show HEAD^:package.json 2>/dev/null | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).version)}catch{console.log('')}})")
+          published=$(npm view "$name@$version" version 2>/dev/null || true)
+          tag=latest
+          case "$version" in *-*) tag=next ;; esac
+          release=false
+          if [ "$version" = "$previous" ]; then
+            echo "Version $version unchanged in this commit: nothing to release."
+          elif [ "$published" = "$version" ]; then
+            echo "$name@$version is already on npm: nothing to release."
+          else
+            echo "Releasing $name@$version (was ${previous:-none}) with dist-tag $tag."
+            release=true
+          fi
+          {
+            echo "release=$release"
+            echo "version=$version"
+            echo "tag=$tag"
+          } >> "$GITHUB_OUTPUT"
+
+  stage:
+    name: stage on npm
+    needs: detect
+    if: needs.detect.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
+      # No dependency cache in release builds (cache poisoning).
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+          no-cache: true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - name: npm stage publish
+        env:
+          DIST_TAG: ${{ needs.detect.outputs.tag }}
+        run: |
+          npm --version
+          npm stage publish --tag "$DIST_TAG" --ignore-scripts
+
+  github-release:
+    name: tag and GitHub release
+    needs: [detect, stage]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          VERSION: ${{ needs.detect.outputs.version }}
+          DIST_TAG: ${{ needs.detect.outputs.tag }}
+        run: |
+          flags=(--repo "$REPO" --target "$SHA" --title "v$VERSION" --generate-notes)
+          if [ "$DIST_TAG" != latest ]; then flags+=(--prerelease); fi
+          gh release create "v$VERSION" "${flags[@]}"

@@ -14,14 +14,20 @@ import { BackgroundManager, addBackgroundTools, type CompletionNotification } fr
 import { TaskToastManager } from "./features/task-toast"
 import { createKeywordDetectorHook } from "./hooks"
 import { addProjectGuidelinesTool } from "./tools/project-guidelines"
+import { addSessionTools, type SessionApi } from "./tools/session-search"
+import {
+  DEFAULT_MAX_CONTINUATIONS,
+  TodoContinuationTracker,
+  type TranscriptMessage,
+} from "./features/todo-continuation"
 import { loadBundledSkills } from "./skills"
 import { ZENOX_RPC, withTimeout, type ToastSink } from "./shared"
-import { createBackgroundSessionHost, parseModelRef } from "./host/v2"
+import { createBackgroundSessionHost, createModelValidator, parseModelRef } from "./host/v2"
 
 /** The slice of the V2 plugin context Zenox uses (keeps test fakes honest). */
 export type ZenoxContext = Pick<
   Plugin.Context,
-  "location" | "agent" | "mcp" | "skill" | "tool" | "session" | "event" | "rpc"
+  "location" | "agent" | "mcp" | "skill" | "tool" | "session" | "event" | "rpc" | "model"
 >
 
 /** Bound on delivering a completion notification so a hung call cannot wedge a claim. */
@@ -130,16 +136,20 @@ export async function setupZenox(
       : undefined
   )
 
-  // Delivered as a prompt (like V1's session.prompt): synthetic input is not
-  // reliably included in the model prompt for plugins (anomalyco/opencode#44788).
-  // Partial notices only append (resume: false, V1 noReply); all-complete
-  // notices resume the parent so it synthesizes the results.
+  // Delivered as a synthetic notice (like OpenCode's own <subagent> reports),
+  // so it never shows up as a message the user typed. Partial notices only
+  // append (resume: false); all-complete notices resume the parent so it
+  // synthesizes the results.
   const deliverNotification = async (notification: CompletionNotification): Promise<void> => {
     const send = async (): Promise<boolean> => {
       try {
-        await ctx.session.prompt({
+        await ctx.session.synthetic({
           sessionID: notification.parentSessionID,
           text: notification.message,
+          description: notification.allComplete
+            ? "Zenox: background tasks complete"
+            : "Zenox: background task finished",
+          metadata: { source: "zenox", kind: "background" },
           resume: notification.allComplete,
         })
         return true
@@ -165,7 +175,7 @@ export async function setupZenox(
   }
 
   // Retry an undelivered all-complete batch on a timer as well as on the
-  // parent's next idle, since plugin event delivery may be unavailable.
+  // parent's next idle, since an idle may never come for an idle parent.
   const retryAttempts = new Map<string, number>()
   const retryTimers = new Set<ReturnType<typeof setTimeout>>()
   const scheduleRetry = (parentSessionID: string): void => {
@@ -191,17 +201,34 @@ export async function setupZenox(
   })
 
   // --- Tools --------------------------------------------------------------
+  const validateModel = createModelValidator(() =>
+    ctx.model.list({ location: { directory }, types: ["chat", "decision", "image"] })
+  )
+  const sessionApi: SessionApi = {
+    list: (input) => ctx.session.list(input),
+    context: (input) => ctx.session.context(input),
+    get: (input) => ctx.session.get(input),
+  }
   await ctx.tool.transform((editor) => {
-    addBackgroundTools(editor, backgroundManager)
+    addBackgroundTools(editor, backgroundManager, validateModel)
     addProjectGuidelinesTool(editor, directory)
+    addSessionTools(editor, sessionApi, directory)
   })
 
   // --- Session hooks ------------------------------------------------------
+  const todoConfig = config.todo_continuation
+  const todoTracker =
+    todoConfig?.enabled === false
+      ? undefined
+      : new TodoContinuationTracker(todoConfig?.max_continuations ?? DEFAULT_MAX_CONTINUATIONS)
+
   const detectKeywords = createKeywordDetectorHook(toast)
   await ctx.session.hook("prompt", (event) => {
     // Zenox's own injected notices and delegated background prompts are not user input.
     if (event.prompt.text.startsWith(SYSTEM_REMINDER_PREFIX)) return
     if (backgroundManager.isBackgroundSession(event.sessionID)) return
+    // A real user prompt gives todo continuation a fresh budget.
+    todoTracker?.reset(event.sessionID)
     detectKeywords(event)
   })
 
@@ -232,17 +259,84 @@ export async function setupZenox(
     handleIdle(sessionID).catch(() => {})
   })
 
+  const continueTodos = async (
+    sessionID: string,
+    background: ReadonlyArray<{ readonly kind: string; readonly sessionID: string }>
+  ): Promise<void> => {
+    if (!todoTracker) return
+    if (backgroundManager.isBackgroundSession(sessionID)) return
+    // Pending work will wake the session with its own notice; continue after that.
+    if (backgroundManager.hasActiveBackgroundWork(sessionID)) return
+    if (background.some((work) => work.sessionID === sessionID && work.kind !== "shell")) return
+    const info = await ctx.session.get({ sessionID })
+    if (info.parentID) return
+
+    const messages = (await ctx.session.context({ sessionID })) as unknown as TranscriptMessage[]
+    const decision = todoTracker.decide(sessionID, messages)
+    if (!decision.continue || !decision.reminder) {
+      if (decision.reason === "limit" || decision.reason === "stalled") {
+        toast({
+          title: "📋 Todo continuation paused",
+          message:
+            decision.reason === "limit"
+              ? `Reached the continuation limit with ${decision.open} todo(s) left.`
+              : `The todo list stopped changing with ${decision.open} todo(s) left.`,
+          variant: "warning",
+          duration: 5000,
+        })
+      }
+      return
+    }
+    // Background work may have started while the transcript was read.
+    if (backgroundManager.hasActiveBackgroundWork(sessionID)) return
+    // Input admitted from the idle hook runs in the same execution.
+    await ctx.session.synthetic({
+      sessionID,
+      text: decision.reminder,
+      description: "Zenox: continuing unfinished todos",
+      metadata: { source: "zenox", kind: "todo-continuation" },
+    })
+    decision.commit?.()
+    toast({
+      title: "📋 Continuing todos",
+      message: `${decision.open} todo(s) left`,
+      variant: "info",
+      duration: 3000,
+    })
+  }
+
+  // V2's pre-idle hook: the earliest, in-process signal that a session finished
+  // its model work. Background completion still has session.wait and the
+  // session.idle event as fallbacks (this hook skips failed/interrupted runs).
+  try {
+    await ctx.session.hook("experimental.idle", async (event) => {
+      handleIdle(event.sessionID).catch(() => {})
+      try {
+        await continueTodos(event.sessionID, event.background)
+      } catch (err) {
+        console.warn("[zenox] todo continuation failed:", err instanceof Error ? err.message : err)
+      }
+    })
+  } catch (err) {
+    console.warn("[zenox] idle hook unavailable:", err instanceof Error ? err.message : err)
+  }
+
   const controller = new AbortController()
   const consumeEvents = async (): Promise<void> => {
     while (!controller.signal.aborted) {
       try {
-        for await (const event of ctx.event.subscribe({ signal: controller.signal })) {
+        const events = ctx.event.subscribe({
+          types: ["session.idle", "session.deleted"],
+          signal: controller.signal,
+        })
+        for await (const event of events) {
           if (event.type === "session.idle") {
             handleIdle(event.data.sessionID).catch(() => {})
           } else if (event.type === "session.deleted") {
             // Abort its running children; nobody is left to read them.
             backgroundManager.detachParentSession(event.data.sessionID)
             retryAttempts.delete(event.data.sessionID)
+            todoTracker?.forget(event.data.sessionID)
           }
         }
       } catch (err) {

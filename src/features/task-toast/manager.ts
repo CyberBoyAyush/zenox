@@ -41,18 +41,21 @@ export class TaskToastManager {
     id: string
     description: string
     agent: string
+    model?: string
   }): Promise<void> {
-    // Track the task
     this.tasks.set(task.id, {
-      ...task,
+      id: task.id,
+      description: task.description,
+      agent: task.agent,
       startedAt: new Date(),
       status: "running",
     })
 
     const runningCount = this.getRunningCount()
+    const agentLine = task.model ? `Agent: ${task.agent} (${task.model})` : `Agent: ${task.agent}`
     const message = runningCount > 1
-      ? `"${task.description}"\nAgent: ${task.agent}\nRunning: ${runningCount}`
-      : `"${task.description}"\nAgent: ${task.agent}`
+      ? `"${task.description}"\n${agentLine}\nRunning: ${runningCount}`
+      : `"${task.description}"\n${agentLine}`
 
     this.sink({
       title: "⚡ Background Task Launched",

@@ -10,18 +10,32 @@
 import { z } from "zod"
 import type { ToolEditor } from "@opencode/plugin/promise/tool"
 import { addZodTool } from "../shared/tool"
-import { BackgroundManager, BackgroundLimitError } from "./manager"
+import type { ModelValidator } from "../host/v2"
+import { BackgroundManager, BackgroundLimitError, describeRunner } from "./manager"
+
+export const MODEL_PARAM_DESCRIPTION =
+  'NEVER set this unless the user explicitly asks for a particular model or variant for this task. Omit it and the agent runs on its own default model. The value is written as "providerID/modelID", or "providerID/modelID#variant" to include a variant. Do not guess the ID: look the model up with the models tool first.'
 
 export async function launchBackgroundTask(
   manager: BackgroundManager,
-  input: { agent: string; description: string; prompt: string },
-  parentSessionID: string
+  input: { agent: string; description: string; prompt: string; model?: string },
+  parentSessionID: string,
+  validateModel?: ModelValidator
 ): Promise<string> {
   // Recursion guard that does not depend on permission naming: a background
   // child may never fan out its own background work.
   if (manager.isBackgroundSession(parentSessionID)) {
     return "background_task is not available inside a background task. Do the work directly and report back."
   }
+
+  // Blank means "not set", matching the core subagent tool.
+  let model = input.model?.trim() || undefined
+  if (model && validateModel) {
+    const check = await validateModel(model)
+    if (!check.ok) return `Failed to launch background task: ${check.error}`
+    model = check.model
+  }
+
   try {
     // launch() enforces concurrency/circuit-breaker limits atomically and
     // throws BackgroundLimitError when a limit is hit.
@@ -30,12 +44,14 @@ export async function launchBackgroundTask(
       description: input.description,
       prompt: input.prompt,
       parentSessionID,
+      ...(model ? { model } : {}),
     })
 
     const activeTasks = manager.listActiveTasks()
     return `Background task launched successfully.
 - Task ID: ${task.id}
 - Agent: ${input.agent}
+- Model: ${task.model ?? "agent default"}
 - Description: ${input.description}
 - Active tasks: ${activeTasks.length}
 
@@ -85,14 +101,18 @@ export function listBackgroundTasks(manager: BackgroundManager, sessionID: strin
     const end = t.completedAt?.getTime() ?? now
     const seconds = Math.round((end - t.startedAt.getTime()) / 1000)
     const error = t.error ? ` — ${t.error}` : ""
-    return `- ${t.id} [${t.status}] ${t.description} (${t.agent}, ${seconds}s)${error}`
+    return `- ${t.id} [${t.status}] ${t.description} (${describeRunner(t)}, ${seconds}s)${error}`
   })
 
   return `Background tasks for this session:\n${lines.join("\n")}\n\nUse background_output(task_id) for completed results.`
 }
 
 /** Registers the background tools on a V2 tool editor. */
-export function addBackgroundTools(editor: ToolEditor, manager: BackgroundManager): void {
+export function addBackgroundTools(
+  editor: ToolEditor,
+  manager: BackgroundManager,
+  validateModel?: ModelValidator
+): void {
   addZodTool(editor, {
     name: "background_task",
     permission: "background_task",
@@ -108,8 +128,10 @@ Use for independent research tasks that benefit from parallelism.`,
         .string()
         .describe("Short 3-5 word description for tracking (e.g., 'Find auth code')"),
       prompt: z.string().describe("Detailed instructions for the agent to execute"),
+      model: z.string().optional().describe(MODEL_PARAM_DESCRIPTION),
     }),
-    execute: (input, context) => launchBackgroundTask(manager, input, context.sessionID),
+    execute: (input, context) =>
+      launchBackgroundTask(manager, input, context.sessionID, validateModel),
   })
 
   addZodTool(editor, {

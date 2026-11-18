@@ -13,12 +13,13 @@ ULTRAWORK MODE ACTIVE - Maximum multi-agent coordination engaged.
 4. Verify ALL delegated work before marking tasks complete
 
 **Pre-delegation reasoning** (do this before every delegation):
-- Independent questions? → several foreground \`subagent\` calls in ONE message (parallel, progress visible)
-- Depends on an earlier answer? → one \`subagent\` call at a time
+- Independent questions? → several \`subagent\` calls in ONE message (parallel, each reports back)
+- Depends on an earlier answer? → one \`subagent\` call, wait for its report, then the next
 - Extensive research that will take a long time while you have other work to do? → only then \`background_task\`
-- In doubt → foreground \`subagent\`
+- In doubt → \`subagent\`
+- Never set a subagent's \`model\` unless the user explicitly asked for that model
 
-**Parallel research pattern** (foreground, visible progress):
+**Parallel research pattern** (each in its own visible child session):
 \`\`\`
 subagent(agent: "explorer", description: "Find patterns", prompt: "...")
 subagent(agent: "librarian", description: "Find best practices", prompt: "...")
@@ -55,7 +56,7 @@ export const EXPLORE_CONTEXT = `<explore-mode>
 EXPLORE MODE - Codebase exploration active.
 
 **Required actions**:
-1. Fire multiple explorer agents in parallel as foreground \`subagent\` calls in ONE message (progress stays visible)
+1. Fire multiple explorer agents in parallel as \`subagent\` calls in ONE message (each reports back when done)
 2. Search for: patterns, implementations, tests, related code
 3. Map out the relevant code landscape before modifying
 4. Look for existing conventions and follow them

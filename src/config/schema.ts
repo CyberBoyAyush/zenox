@@ -68,6 +68,19 @@ export const AutoUpdateConfigSchema = z.object({
 export type AutoUpdateConfig = z.infer<typeof AutoUpdateConfigSchema>
 
 /**
+ * Todo continuation: keep the agent working while todos are unfinished.
+ * Only acts when OpenCode's opt-in todo tool is in use.
+ */
+export const TodoContinuationConfigSchema = z.object({
+  /** Default: true. */
+  enabled: z.boolean().optional(),
+  /** Max automatic continuations per user prompt. Default: 10. */
+  max_continuations: z.number().int().min(1).max(50).optional(),
+})
+
+export type TodoContinuationConfig = z.infer<typeof TodoContinuationConfigSchema>
+
+/**
  * Main configuration schema for zenox
  */
 export const ZenoxConfigSchema = z.object({
@@ -78,6 +91,7 @@ export const ZenoxConfigSchema = z.object({
   disabled_mcps: z.array(McpNameSchema).optional(),
   disabled_skills: z.array(z.string()).optional(),
   background: BackgroundConfigSchema.optional(),
+  todo_continuation: TodoContinuationConfigSchema.optional(),
 })
 
 export type ZenoxConfig = z.infer<typeof ZenoxConfigSchema>

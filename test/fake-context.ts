@@ -49,6 +49,25 @@ export interface FakeContextOptions {
   autoComplete?: boolean
   /** Event stream delivers nothing (anomalyco/opencode#44788). */
   silentEvents?: boolean
+  /** synthetic() throws for the first `times` calls whose text matches `match`. */
+  failSynthetic?: { match: string; times: number }
+  /** Model catalog returned by model.list. */
+  models?: Array<{ id: string; providerID: string; type?: string; variants?: Array<{ id: string }> }>
+  /** model.list rejects. */
+  modelListFails?: boolean
+  /** Sessions returned by session.list. */
+  sessionList?: Array<{
+    id: string
+    title?: string
+    parentID?: string
+    agent?: string
+    model?: { providerID: string; id: string }
+    time: { created: number; updated: number }
+  }>
+  /** Transcript returned by session.context for these (non-child) sessions. */
+  transcripts?: Record<string, unknown[]>
+  /** Registering the experimental.idle hook throws (older OpenCode). */
+  noIdleHook?: boolean
 }
 
 export function createFakeContext(options: FakeContextOptions = {}) {
@@ -61,10 +80,22 @@ export function createFakeContext(options: FakeContextOptions = {}) {
   const toasts: ZenoxToast[] = []
   const created: Array<Record<string, unknown>> = []
   const prompts: Array<{ sessionID: string; text: string; resume?: boolean }> = []
+  const synthetics: Array<{
+    sessionID: string
+    text: string
+    resume?: boolean
+    description?: string
+    metadata?: Record<string, unknown>
+  }> = []
+  const listCalls: Array<Record<string, unknown>> = []
+  const modelListCalls: Array<Record<string, unknown>> = []
+  const subscribeOptions: Array<Record<string, unknown>> = []
+  const transcripts = new Map(Object.entries(options.transcripts ?? {}))
   const interrupted: string[] = []
   const sessions = new Map(Object.entries(options.sessions ?? {}))
   let childCounter = 0
   let failingAttempts = 0
+  let failingSynthetic = 0
   const waiters = new Map<string, Array<() => void>>()
   const finished = new Set<string>()
 
@@ -150,10 +181,35 @@ export function createFakeContext(options: FakeContextOptions = {}) {
         return { dispose: async () => {} }
       },
     },
+    model: {
+      list: async (input: Record<string, unknown>) => {
+        modelListCalls.push(input)
+        if (options.modelListFails) throw new Error("catalog down")
+        return { data: options.models ?? [] }
+      },
+    },
     session: {
       hook: async (name: string, callback: Hook) => {
+        if (name === "experimental.idle" && options.noIdleHook) throw new Error("unknown hook")
         sessionHooks.set(name, callback)
         return { dispose: async () => {} }
+      },
+      synthetic: async (input: {
+        sessionID: string
+        text: string
+        resume?: boolean
+        description?: string
+        metadata?: Record<string, unknown>
+      }) => {
+        if (options.failSynthetic && input.text.includes(options.failSynthetic.match)) {
+          if (++failingSynthetic <= options.failSynthetic.times) throw new Error("simulated failure")
+        }
+        synthetics.push(input)
+        return {}
+      },
+      list: async (input: Record<string, unknown>) => {
+        listCalls.push(input)
+        return { data: options.sessionList ?? [], cursor: {} }
       },
       create: async (input: Record<string, unknown>) => {
         created.push(input)
@@ -178,10 +234,13 @@ export function createFakeContext(options: FakeContextOptions = {}) {
         interrupted.push(input.sessionID)
         return { interrupted: true }
       },
-      context: async (input: { sessionID: string }) =>
-        options.autoComplete || finished.has(input.sessionID)
+      context: async (input: { sessionID: string }) => {
+        const transcript = transcripts.get(input.sessionID)
+        if (transcript) return transcript
+        return options.autoComplete || finished.has(input.sessionID)
           ? [{ type: "assistant", content: [{ type: "text", text: `done ${input.sessionID}` }] }]
-          : [],
+          : []
+      },
       get: async (input: { sessionID: string }) => {
         const session = sessions.get(input.sessionID)
         if (!session) throw new Error("not found")
@@ -189,7 +248,9 @@ export function createFakeContext(options: FakeContextOptions = {}) {
       },
     },
     event: {
-      subscribe: ({ signal }: { signal?: AbortSignal } = {}) => {
+      subscribe: (input: { signal?: AbortSignal; types?: string[] } = {}) => {
+        const { signal, types } = input
+        subscribeOptions.push(input)
         subscriptions++
         signal?.addEventListener("abort", () => {
           aborted = true
@@ -200,7 +261,7 @@ export function createFakeContext(options: FakeContextOptions = {}) {
             while (!signal?.aborted) {
               const next = queue.shift()
               if (next) {
-                yield next
+                if (!types || types.includes(next.type)) yield next
                 continue
               }
               await new Promise<void>((resolve) => (wake = resolve))
@@ -224,9 +285,18 @@ export function createFakeContext(options: FakeContextOptions = {}) {
     toasts,
     created,
     prompts,
-    /** Prompts sent to sessions other than background children (notifications). */
+    synthetics,
+    listCalls,
+    modelListCalls,
+    subscribeOptions,
+    transcripts,
+    /** Zenox background notices delivered to parent sessions. */
     get notices() {
-      return prompts.filter((p) => !p.sessionID.startsWith("child_"))
+      return synthetics.filter((s) => s.metadata?.kind === "background")
+    },
+    /** Todo-continuation reminders. */
+    get continuations() {
+      return synthetics.filter((s) => s.metadata?.kind === "todo-continuation")
     },
     interrupted,
     sessions,

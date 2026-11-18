@@ -48,6 +48,11 @@ function isFinished(task: BackgroundTask): boolean {
   return TERMINAL_STATUSES.has(task.status)
 }
 
+/** "explorer" or "explorer on openai/gpt-6.1-sol#high" when the model was overridden. */
+export function describeRunner(task: Pick<BackgroundTask, "agent" | "model">): string {
+  return task.model ? `${task.agent} on ${task.model}` : task.agent
+}
+
 /** Thrown by launch() when a concurrency/circuit-breaker limit is hit. */
 export class BackgroundLimitError extends Error {
   constructor(message: string) {
@@ -233,6 +238,7 @@ export class BackgroundManager {
         agent: input.agent,
         description: input.description,
         prompt: input.prompt,
+        ...(input.model ? { model: input.model } : {}),
         status: "running",
         startedAt: new Date(),
       }
@@ -268,6 +274,7 @@ export class BackgroundManager {
         id: task.id,
         description: task.description,
         agent: task.agent,
+        ...(task.model ? { model: task.model } : {}),
       }).catch(() => {})
     }
 
@@ -311,6 +318,7 @@ export class BackgroundManager {
       parentSessionID: input.parentSessionID,
       agent: input.agent,
       title: `${input.description} (@${input.agent} background)`,
+      ...(input.model ? { model: input.model } : {}),
     })
   }
 
@@ -487,13 +495,13 @@ export class BackgroundManager {
       const taskList = completedTasks
         .map((t) => {
           const suffix = t.status === "completed" ? "" : ` — ${t.status}`
-          return `- ${t.id}: ${t.description} (${t.agent})${suffix}`
+          return `- ${t.id}: ${t.description} (${describeRunner(t)})${suffix}`
         })
         .join("\n")
 
       const retrievable = completedTasks.some((t) => t.status === "completed")
       const retrieveLine = retrievable
-        ? `\n\nUse \`background_output(task_id="<id>")\` to retrieve each completed result and synthesize findings.`
+        ? `\n\nOpenCode may also show each result in a <subagent> message. Use \`background_output(task_id="<id>")\` for any result not already shown, then synthesize findings.`
         : `\n\nNothing produced output. Handle this work yourself rather than retrying the same fan-out.`
 
       message = `<system-reminder>

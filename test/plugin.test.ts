@@ -28,7 +28,7 @@ describe("agents", () => {
     expect(explorer.mode).toBe("subagent")
     expect(explorer.system).toContain("codebase search specialist")
     expect(explorer.color).toBe("#3B82F6")
-    expect(explorer.model).toEqual({ providerID: "anthropic", id: "claude-haiku-4-5" })
+    expect(explorer.model).toEqual({ providerID: "anthropic", id: "claude-haiku-5-5" })
     await z.cleanup()
   })
 
@@ -128,7 +128,7 @@ describe("MCP servers and skills", () => {
 })
 
 describe("tools", () => {
-  test("registers background + guideline tools and drops unsupported V1 tools", async () => {
+  test("registers background, guideline and session tools; unsupported V1 tools stay dropped", async () => {
     const z = await start()
     expect([...z.tools.keys()].sort()).toEqual(
       [
@@ -137,9 +137,11 @@ describe("tools", () => {
         "background_output",
         "background_task",
         "save_project_guideline",
+        "session_read",
+        "session_search",
       ].sort()
     )
-    for (const dropped of ["find_symbols", "lsp_status", "session_list", "session_search"]) {
+    for (const dropped of ["find_symbols", "lsp_status", "session_list"]) {
       expect(z.tools.has(dropped)).toBe(false)
     }
     await z.cleanup()
@@ -153,6 +155,7 @@ describe("tools", () => {
         agent: expect.objectContaining({ type: "string" }),
         description: expect.objectContaining({ type: "string" }),
         prompt: expect.objectContaining({ type: "string" }),
+        model: expect.objectContaining({ type: "string" }),
       },
       required: ["agent", "description", "prompt"],
       additionalProperties: false,
@@ -266,7 +269,7 @@ describe("background tasks end-to-end", () => {
   })
 
   test("a failed delivery is retried when the parent goes idle", async () => {
-    const z = await start({}, { failPrompt: { match: "ALL BACKGROUND TASKS COMPLETE", times: 1 } })
+    const z = await start({}, { failSynthetic: { match: "ALL BACKGROUND TASKS COMPLETE", times: 1 } })
     await launch(z, "x", "p")
     await z.finish("child_1")
     expect(z.notices).toHaveLength(0)
@@ -287,9 +290,10 @@ describe("background tasks end-to-end", () => {
     await z.cleanup()
   })
 
-  test("todo tooling is gone (V2 has no todo tool)", async () => {
+  test("no tool hooks are registered; todo continuation uses the idle hook", async () => {
     const z = await start()
     expect(z.toolHooks.has("execute.after")).toBe(false)
+    expect(z.sessionHooks.has("experimental.idle")).toBe(true)
     await z.cleanup()
   })
 })

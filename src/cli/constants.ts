@@ -1,4 +1,9 @@
+import { BUILTIN_AGENTS } from "../agents/resolve"
+
 export const PACKAGE_NAME = "zenox"
+
+/** Built-in model without its variant, straight from the agent definitions (never drifts). */
+const builtinModel = (name: AgentName): string => BUILTIN_AGENTS[name].model.split("#", 2)[0]
 
 export type AgentName =
   | "explorer"
@@ -18,41 +23,41 @@ export const AGENTS: AgentInfo[] = [
   {
     name: "explorer",
     displayName: "Explorer",
-    defaultModel: "anthropic/claude-haiku-4-5",
+    defaultModel: builtinModel("explorer"),
     description: "Fast codebase search specialist",
   },
   {
     name: "librarian",
     displayName: "Librarian",
-    defaultModel: "anthropic/claude-sonnet-5-5",
+    defaultModel: builtinModel("librarian"),
     description: "Open-source research agent",
   },
   {
     name: "oracle",
     displayName: "Oracle",
-    defaultModel: "openai/gpt-6.1-sol",
+    defaultModel: builtinModel("oracle"),
     description: "Strategic technical advisor",
   },
   {
     name: "ui-planner",
     displayName: "UI-Planner",
-    defaultModel: "anthropic/claude-opus-5-5",
+    defaultModel: builtinModel("ui-planner"),
     description: "Designer-turned-developer",
   },
   {
     name: "inspector",
     displayName: "Inspector",
-    defaultModel: "anthropic/claude-sonnet-5-5",
+    defaultModel: builtinModel("inspector"),
     description: "Runs checks, reports PASS/FAIL ground truth",
   },
 ]
 
 export const DEFAULT_MODELS: Record<AgentName, string> = {
-  explorer: "anthropic/claude-haiku-4-5",
-  librarian: "anthropic/claude-sonnet-5-5",
-  oracle: "openai/gpt-6.1-sol",
-  "ui-planner": "anthropic/claude-opus-5-5",
-  inspector: "anthropic/claude-sonnet-5-5",
+  explorer: builtinModel("explorer"),
+  librarian: builtinModel("librarian"),
+  oracle: builtinModel("oracle"),
+  "ui-planner": builtinModel("ui-planner"),
+  inspector: builtinModel("inspector"),
 }
 
 export type McpName = "exa" | "grep_app" | "sequential-thinking"

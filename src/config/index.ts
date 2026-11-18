@@ -5,6 +5,8 @@ export {
   AgentOverridesSchema,
   BackgroundConfigSchema,
   AutoUpdateConfigSchema,
+  TodoContinuationConfigSchema,
+  type TodoContinuationConfig,
   type ZenoxConfig,
   type AgentName,
   type AgentOverrideConfig,

@@ -10,12 +10,13 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/zenox"><img src="https://img.shields.io/npm/v/zenox.svg?style=flat-square" alt="npm version" /></a>
-  <a href="https://github.com/CYBERBOYAYUSH/zenox/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="license" /></a>
+  <a href="https://github.com/CyberBoyAyush/zenox/actions/workflows/ci.yml"><img src="https://github.com/CyberBoyAyush/zenox/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://github.com/CyberBoyAyush/zenox/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="license" /></a>
 </p>
 
 ---
 
-> **Zenox 2.x requires OpenCode V2** (`@opencode/cli` 2.x, including OpenChamber 2.x). Still on OpenCode V1? Pin `"zenox@1.8.1"` in your `plugin` array.
+> **Zenox 2.1 requires OpenCode 2.3 or newer** (`@opencode/cli` 2.x, including OpenChamber 2.x). Still on OpenCode V1? Pin `"zenox@1.8.1"` in your `plugin` array.
 
 Zenox supercharges [OpenCode](https://opencode.ai) with specialized AI agents that handle different aspects of development. Instead of one agent doing everything, you get a team of experts — each optimized for their domain.
 
@@ -25,6 +26,9 @@ Zenox supercharges [OpenCode](https://opencode.ai) with specialized AI agents th
 - **Verification Loop** — Inspector runs your real checks and reports PASS/FAIL ground truth, not vibes
 - **Bundled Skills** — `frontend-design` & `grill-me`, registered in memory and updated with Zenox
 - **Hardened Background Tasks** — Parallel agents with concurrency limits, a per-task timeout, and a `background_list` recovery tool
+- **Per-Task Model Override** — Agents always use their default model, unless you ask for a specific one for a task
+- **Todo Continuation** — Keeps the agent working while its todo list still has unfinished items
+- **Session Search** — `session_search` / `session_read` to recall earlier sessions in the project
 - **Thinking Mode Variants** — Configure thinking levels (high, xhigh, max) per agent
 - **Keyword Triggers** — `ultrawork`, `deep research`, `explore codebase`, `review`, `blueprint`
 - **Project Guidelines Auto-Update** — Automatically keeps AGENTS.md (and an existing CLAUDE.md) up-to-date
@@ -57,7 +61,7 @@ The package also exports a terminal plugin (`zenox/tui`) that OpenCode loads aut
 
 | Agent | What it does | Default Model |
 |-------|-------------|---------------|
-| **Explorer** | Codebase grep, file discovery, pattern matching | `claude-haiku-4-5` |
+| **Explorer** | Codebase grep, file discovery, pattern matching | `claude-haiku-5-5` |
 | **Librarian** | Library research, docs lookup, GitHub examples | `claude-sonnet-5-5` |
 | **Oracle** | Architecture decisions, debugging strategy, code review | `gpt-6.1-sol` (variant medium) |
 | **UI Planner** | Frontend design, CSS, animations, visual polish | `claude-opus-5-5` |
@@ -106,6 +110,19 @@ Build agent: implements a feature
   → Same signature again? → escalate to Oracle instead of retrying the same way
   → PASS → done, reported to you
 ```
+
+### Running an agent on a different model
+
+Every agent always runs on its **default model** (or the one you set in `zenox.json`). The main agent never switches models on its own.
+
+When you want a different model for **one task**, just ask:
+
+```
+You: "Run oracle on openai/gpt-6.1-sol#high to review this diff"
+→ subagent(agent: "oracle", ..., model: "openai/gpt-6.1-sol#high")
+```
+
+Only that call uses the model you named; the next call goes back to the default. Both the built-in `subagent` tool and Zenox's `background_task` take the optional `model` (`"provider/model"` or `"provider/model#variant"`). Zenox checks it against your model list first and explains what's wrong if the model or variant doesn't exist.
 
 Inspector's tools are strictly read + shell — it cannot write or edit files, so a bad verdict can never turn into a bad fix by the same agent that would be grading itself.
 
@@ -190,11 +207,13 @@ background_task(agent="librarian", description="JWT best practices", prompt="...
 | `background_cancel` | Cancel a running task (if it was the last one, you also get the "all complete" summary right away) |
 | `background_list` | List this session's tasks and their status — use it if you lose track of a task ID or miss a notification |
 
+`background_task` also takes an optional `model` for the rare case you ask for a specific model (see [Running an agent on a different model](#running-an-agent-on-a-different-model)).
+
 **Hung tasks don't hang forever.** Each task has a wall-clock timeout (default 30 minutes, configurable via `background.timeout_minutes`) — if a background session never goes idle, it's aborted automatically and reported as failed, freeing its concurrency slot.
 
 **Notifications are precise.** Each finished task is only ever included in one "all complete" summary — no duplicate messages if the notification path fires more than once for the same session.
 
-Completion notices are added to the parent session as messages (partial notices without starting a turn; the final "all complete" notice starts one). Background tasks run as **child sessions** of the session that launched them, with the native `subagent` tool and `background_task` denied inside them so they can't fan out recursively.
+Completion notices are added to the parent session as system notices, never as fake user messages (partial notices without starting a turn; the final "all complete" notice starts one). OpenCode 2.3 also reports each child's result with its own `<subagent>` message; both arrive together and wake the parent once. Background tasks run as **child sessions** of the session that launched them, with the native `subagent` tool and `background_task` denied inside them so they can't fan out recursively.
 
 ### Toast Notifications
 
@@ -204,6 +223,28 @@ Zenox shows toast notifications for background task events (in the OpenCode term
 - ✅ **Task Completed** — Shows duration and remaining count
 - 🎉 **All Complete** — Shows summary of all finished tasks
 - ❌ **Task Failed** — Shows error message (including timeouts)
+
+## Todo Continuation
+
+When the agent stops while its todo list (OpenCode's todo tool) still has unfinished items, Zenox nudges it to continue with the next one. It's built to never loop:
+
+- It only acts on main sessions, never on subagents or background tasks.
+- It waits while the session's own subagents or background tasks are still running.
+- It never overrides a question the agent asked you.
+- It stops if the todo list stops changing, and after `max_continuations` nudges (default `10`). Your next message resets the count.
+
+The todo tool is opt-in in OpenCode (`"experimental": { "todo": true }`). Turn continuation off in `zenox.json`:
+
+```json
+{ "todo_continuation": { "enabled": false, "max_continuations": 10 } }
+```
+
+## Session Search
+
+| Tool | What it does |
+|------|--------------|
+| `session_search` | Find past sessions in this project by title and content (omit `query` for the most recent ones) |
+| `session_read` | Read the conversation of one of those sessions |
 
 ## Project Guidelines Auto-Update
 
@@ -257,7 +298,7 @@ Config saves to `~/.config/opencode/zenox.json`:
 ```json
 {
   "agents": {
-    "explorer": { "model": "anthropic/claude-sonnet-4-6" },
+    "explorer": { "model": "anthropic/claude-sonnet-5-5" },
     "oracle": { "model": "openai/gpt-6.1-sol" },
     "inspector": { "model": "anthropic/claude-sonnet-5-5" }
   }
@@ -358,10 +399,20 @@ OpenCode V2 manages plugin packages: unpinned plugins are checked for updates at
 | Zenox 1.x feature | Status |
 |---|---|
 | `find_symbols`, `lsp_status` | Removed — OpenCode V2 has no LSP runtime yet ([anomalyco/opencode#38528](https://github.com/anomalyco/opencode/issues/38528)) |
-| `session_list`, `session_search` | Removed — V2 plugins cannot list sessions |
-| Todo continuation reminders | Removed — V2 has no todo tool ([anomalyco/opencode#42421](https://github.com/anomalyco/opencode/issues/42421)) |
 | Per-agent `temperature` | Removed — V2 does not send agent request settings yet |
 | npm update check / plugin cache clearing | Replaced by OpenCode's own plugin updates |
+
+## Development
+
+```bash
+bun install
+bun run typecheck     # src + tests
+bun test              # unit tests
+bun run test:e2e      # Zenox inside the real OpenCode engine (fake model API, no network)
+bun run check         # everything CI runs, including the e2e suite against the built bundle
+```
+
+CI runs on every push and pull request to `main` on [Instabox](https://instabox.sh/docs/ci) machines (`.github/workflows/ci.yml`). When a push to `main` changes the `version` in `package.json` and CI passes, `.github/workflows/release.yml` stages the release on npm with trusted publishing (no token). It goes live after a maintainer approves it with 2FA (`npm stage approve <stage-id>` or on npmjs.com), and a GitHub release `vX.Y.Z` is created.
 
 ## Credits
 
