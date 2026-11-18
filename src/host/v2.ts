@@ -44,11 +44,14 @@ export function createBackgroundSessionHost(
 ): BackgroundSessionHost {
   const retryDelayMs = options.retryDelayMs ?? WAIT_RETRY_DELAY_MS
   return {
-    async createChildSession({ parentSessionID, agent, title }) {
+    async createChildSession({ parentSessionID, agent, title, model }) {
+      const ref = model ? parseModelRef(model) : undefined
+      if (model && !ref) throw new Error(`Invalid model "${model}"`)
       const created = await session.create({
         parentID: parentSessionID,
         title,
         ...(agent ? { agent } : {}),
+        ...(ref ? { model: ref } : {}),
         permissions: [...BACKGROUND_CHILD_PERMISSIONS],
         metadata: { ...BACKGROUND_SESSION_METADATA },
       })
@@ -95,7 +98,7 @@ export function createBackgroundSessionHost(
  * itself contain slashes (e.g. `openrouter/anthropic/claude`).
  */
 export function parseModelRef(value: string): Model.Ref | undefined {
-  const [modelPart, variant] = value.split("#", 2)
+  const [modelPart, variant] = value.trim().split("#", 2)
   const slash = modelPart.indexOf("/")
   if (slash <= 0 || slash === modelPart.length - 1) return undefined
   const providerID = modelPart.slice(0, slash) as Model.Ref["providerID"]
@@ -103,4 +106,57 @@ export function parseModelRef(value: string): Model.Ref | undefined {
   return variant
     ? { providerID, id, variant: variant as NonNullable<Model.Ref["variant"]> }
     : { providerID, id }
+}
+
+/** Minimal model catalog entry read from `model.list`. */
+interface CatalogModel {
+  readonly id: string
+  readonly providerID: string
+  readonly type?: string
+  readonly variants?: ReadonlyArray<{ readonly id: string }>
+}
+
+export type ModelCheck = { ok: true; model: string } | { ok: false; error: string }
+
+/** Checks a per-task model override, with the same rules as OpenCode's own `subagent` tool. */
+export type ModelValidator = (value: string) => Promise<ModelCheck>
+
+export function createModelValidator(
+  list: () => Promise<{ readonly data: ReadonlyArray<CatalogModel> }>
+): ModelValidator {
+  return async (value) => {
+    const ref = parseModelRef(value)
+    if (!ref) {
+      return {
+        ok: false,
+        error: `Invalid model "${value}". Use "providerID/modelID" or "providerID/modelID#variant".`,
+      }
+    }
+    const name = `${ref.providerID}/${ref.id}`
+    let catalog: ReadonlyArray<CatalogModel>
+    try {
+      catalog = (await list()).data
+    } catch {
+      // Catalog unavailable: let session.create be the judge rather than blocking the task.
+      return { ok: true, model: value.trim() }
+    }
+    const model = catalog.find((m) => m.providerID === ref.providerID && m.id === ref.id)
+    if (!model) {
+      return { ok: false, error: `Model "${name}" is not available. Use the models tool to see what is available.` }
+    }
+    if (model.type && model.type !== "chat") {
+      return { ok: false, error: `Model "${name}" is a ${model.type} model; background tasks need a chat model.` }
+    }
+    const variants = model.variants ?? []
+    if (ref.variant && !variants.some((v) => v.id === ref.variant)) {
+      return {
+        ok: false,
+        error:
+          variants.length === 0
+            ? `Model "${name}" has no variants. Omit the variant.`
+            : `Variant "${ref.variant}" is not available for "${name}". Available: ${variants.map((v) => v.id).join(", ")}.`,
+      }
+    }
+    return { ok: true, model: ref.variant ? `${name}#${ref.variant}` : name }
+  }
 }

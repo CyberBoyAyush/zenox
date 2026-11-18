@@ -14,11 +14,11 @@
       "properties": {
         "explorer": {
           "$ref": "#/$defs/agentOverride",
-          "description": "Fast codebase search specialist (default: anthropic/claude-haiku-4-5)"
+          "description": "Fast codebase search specialist (default: anthropic/claude-haiku-5-5)"
         },
         "librarian": {
           "$ref": "#/$defs/agentOverride",
-          "description": "Open-source research agent (default: anthropic/claude-sonnet-4-6)"
+          "description": "Open-source research agent (default: anthropic/claude-sonnet-5-5)"
         },
         "oracle": {
           "$ref": "#/$defs/agentOverride",
@@ -98,6 +98,25 @@
           "minimum": 1,
           "maximum": 240,
           "default": 30
+        }
+      },
+      "additionalProperties": false
+    },
+    "todo_continuation": {
+      "type": "object",
+      "description": "Keep the agent working while its todo list (OpenCode's opt-in todo tool) still has unfinished items",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Continue automatically when the agent stops with unfinished todos (default: true)",
+          "default": true
+        },
+        "max_continuations": {
+          "type": "integer",
+          "description": "Max automatic continuations per user prompt; it also stops when the todo list stops changing (default: 10)",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 10
         }
       },
       "additionalProperties": false

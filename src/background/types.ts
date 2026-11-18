@@ -12,6 +12,8 @@ export interface BackgroundTask {
   agent: string
   description: string
   prompt: string
+  /** `provider/model[#variant]` the user asked for; undefined = the agent's default model. */
+  model?: string
   status: TaskStatus
   startedAt: Date
   completedAt?: Date
@@ -34,6 +36,8 @@ export interface LaunchInput {
   prompt: string
   description: string
   parentSessionID: string
+  /** Validated `provider/model[#variant]` override for this one task. */
+  model?: string
 }
 
 export interface CompletionNotification {
@@ -61,6 +65,8 @@ export interface BackgroundSessionHost {
     parentSessionID: string
     agent?: string
     title: string
+    /** `provider/model[#variant]`; omitted = the agent's default model. */
+    model?: string
   }): Promise<string>
   /** Send the task prompt into a child session and start its agent loop. */
   prompt(sessionID: string, text: string): Promise<void>

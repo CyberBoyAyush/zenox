@@ -142,8 +142,21 @@ describe("V2 capability audit", () => {
     }
   })
 
-  test("orchestration prompt steers background work to background_task", () => {
-    expect(getOrchestrationPrompt("build")).toContain("not the `subagent` tool's own `background` flag")
+  test("orchestration prompt steers long research to background_task and the rest to subagent", () => {
+    const prompt = getOrchestrationPrompt("build")!
+    expect(prompt).toContain("### Quick Rule: Subagent First")
+    expect(prompt).toContain("**Use `background_task` only for extensive, long-running research**")
+    // OpenCode 2.3 removed the subagent tool's foreground mode and background flag.
+    expect(prompt).not.toMatch(/foreground/i)
+    expect(prompt).not.toContain("`background` flag")
+  })
+
+  test("orchestration prompt: default models, override only when the user asks", () => {
+    const prompt = getOrchestrationPrompt("plan")!
+    expect(prompt).toContain("### Choosing a Model (Only When the User Asks)")
+    expect(prompt).toContain("Every agent runs on its **own default model**. Never pick a model yourself.")
+    expect(prompt).toContain("pass `model` on **that call only**")
+    expect(prompt).toContain("never guess it")
   })
 
   test("librarian defaults to Claude Sonnet 5.5", () => {
